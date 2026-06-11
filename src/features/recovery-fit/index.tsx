@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   AlertCircleIcon,
+  ArrowLeftIcon,
   ArrowRightIcon,
   BrainCircuitIcon,
   CheckCircle2Icon,
@@ -11,12 +12,23 @@ import {
   HelpCircleIcon,
   HomeIcon,
   PlayCircleIcon,
-  PlayIcon,
+  RotateCcwIcon,
   ShieldCheckIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -58,136 +70,96 @@ import { cn } from "@/lib/utils"
 
 import {
   helpTopics,
-  initialDailyCheckin,
-  initialPainLog,
-  initialSessionSets,
-  painRegions,
-  reportInput,
-  workoutSummary,
+  painRegionLabels,
+  recoveryRegionLabels,
+  upperAWorkout,
 } from "./mock-data"
-import { generateMarkdownReport } from "./lib/export-report"
 import {
-  getPainSeverity,
-  getRecoveryRecommendation,
-} from "./lib/recovery-rules"
+  generateMarkdownReport,
+  getReportRecommendation,
+} from "./lib/export-report"
+import { getPainSeverity } from "./lib/recovery-rules"
+import { parseNumericDraft } from "./schemas"
+import { useRecoveryFitStore } from "./store"
 import type {
-  AppTab,
-  DailyCheckinState,
+  AppView,
   HelpTopic,
   HelpTopicId,
-  NumericDraft,
-  PainLogState,
-  PainRegionId,
-  SessionSetDraft,
+  MarkdownReportInput,
+  RecoveryRegionId,
   Tone,
+  WorkoutExercise,
+  WorkoutExerciseLog,
+  WorkoutSetDraft,
 } from "./types"
-
-type NumericOptions = {
-  min: number
-  max?: number
-  integer?: boolean
-}
 
 type CopyState = "idle" | "copied" | "manual"
 
 const tabConfig: Array<{
-  id: AppTab
+  id: AppView
   label: string
   title: string
   icon: typeof HomeIcon
 }> = [
   { id: "today", label: "Hoje", title: "Diário de Treino", icon: HomeIcon },
   { id: "session", label: "Treino", title: "Sessão Ativa", icon: PlayCircleIcon },
-  { id: "recovery", label: "Recuperação", title: "Carga Tolerada", icon: ActivityIcon },
+  { id: "recovery", label: "Recuperação", title: "Recuperação", icon: ActivityIcon },
 ]
 
 const toneClasses: Record<
   Tone,
   {
-    surface: string
-    border: string
-    text: string
-    icon: string
     badge: string
+    border: string
+    icon: string
+    surface: string
+    text: string
   }
 > = {
-  neutral: {
-    surface: "bg-muted",
-    border: "border-border",
-    text: "text-foreground",
-    icon: "text-muted-foreground",
-    badge: "bg-muted text-muted-foreground",
+  danger: {
+    badge: "bg-rose-100 text-rose-800",
+    border: "border-rose-200",
+    icon: "text-rose-600",
+    surface: "bg-rose-50",
+    text: "text-rose-950",
   },
   info: {
-    surface: "bg-indigo-50",
-    border: "border-indigo-100",
-    text: "text-indigo-950",
-    icon: "text-indigo-600",
     badge: "bg-indigo-100 text-indigo-800",
+    border: "border-indigo-100",
+    icon: "text-indigo-600",
+    surface: "bg-indigo-50",
+    text: "text-indigo-950",
+  },
+  neutral: {
+    badge: "bg-muted text-muted-foreground",
+    border: "border-border",
+    icon: "text-muted-foreground",
+    surface: "bg-muted",
+    text: "text-foreground",
   },
   success: {
-    surface: "bg-emerald-50",
-    border: "border-emerald-100",
-    text: "text-emerald-950",
-    icon: "text-emerald-600",
     badge: "bg-emerald-100 text-emerald-800",
+    border: "border-emerald-100",
+    icon: "text-emerald-600",
+    surface: "bg-emerald-50",
+    text: "text-emerald-950",
   },
   warning: {
-    surface: "bg-amber-50",
-    border: "border-amber-200",
-    text: "text-amber-950",
-    icon: "text-amber-600",
     badge: "bg-amber-100 text-amber-800",
+    border: "border-amber-200",
+    icon: "text-amber-600",
+    surface: "bg-amber-50",
+    text: "text-amber-950",
   },
-  danger: {
-    surface: "bg-rose-50",
-    border: "border-rose-200",
-    text: "text-rose-950",
-    icon: "text-rose-600",
-    badge: "bg-rose-100 text-rose-800",
-  },
-}
-
-function normalizeNumericDraft(rawValue: string, options: NumericOptions) {
-  if (rawValue === "") {
-    return ""
-  }
-
-  const normalized = rawValue.replace(",", ".")
-  const pattern = options.integer ? /^\d+$/ : /^\d+(\.\d*)?$/
-
-  if (!pattern.test(normalized)) {
-    return null
-  }
-
-  const parsed = Number(normalized)
-
-  if (!Number.isFinite(parsed)) {
-    return null
-  }
-
-  const max = options.max ?? Number.POSITIVE_INFINITY
-  const clamped = Math.min(Math.max(parsed, options.min), max)
-  const nextValue = options.integer ? Math.trunc(clamped) : clamped
-
-  return String(nextValue)
-}
-
-function finalizeNumericDraft(rawValue: string, options: NumericOptions) {
-  return normalizeNumericDraft(rawValue, options) ?? ""
-}
-
-function getMaxPainValue(painLog: PainLogState) {
-  return Math.max(...Object.values(painLog.values))
 }
 
 function copyWithExecCommand(text: string) {
   const textarea = document.createElement("textarea")
   textarea.value = text
   textarea.setAttribute("readonly", "")
+  textarea.style.left = "-9999px"
   textarea.style.position = "fixed"
   textarea.style.top = "0"
-  textarea.style.left = "-9999px"
   document.body.appendChild(textarea)
   textarea.focus()
   textarea.select()
@@ -208,88 +180,88 @@ async function copyReportToClipboard(text: string) {
   return copyWithExecCommand(text)
 }
 
+function isExerciseIncomplete(log: WorkoutExerciseLog | undefined) {
+  if (!log) {
+    return true
+  }
+
+  return log.sets.some(
+    (set) => set.loadKg === "" || set.reps === "" || set.rir === ""
+  )
+}
+
+function formatCompletionCount(completed: number, total: number) {
+  return `${completed}/${total}`
+}
+
 export function RecoveryFitApp() {
-  const [activeTab, setActiveTab] = useState<AppTab>("today")
-  const [checkin, setCheckin] =
-    useState<DailyCheckinState>(initialDailyCheckin)
-  const [sets, setSets] = useState<SessionSetDraft[]>(initialSessionSets)
-  const [painLog, setPainLog] = useState<PainLogState>(initialPainLog)
-  const [exerciseSaved, setExerciseSaved] = useState(false)
-  const [warmupDone, setWarmupDone] = useState(false)
+  const store = useRecoveryFitStore()
   const [helpTopicId, setHelpTopicId] = useState<HelpTopicId | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
 
-  const reportMarkdown = useMemo(() => generateMarkdownReport(reportInput), [])
   const activeTitle =
-    tabConfig.find((tab) => tab.id === activeTab)?.title ?? "RecoveryFit"
-  const activeRecommendation = useMemo(
-    () =>
-      getRecoveryRecommendation({
-        pain: 2,
-        worse24hAfter: false,
-        consecutiveAttentionCount: 0,
-      }),
-    []
+    tabConfig.find((tab) => tab.id === store.activeView)?.title ?? "RecoveryFit"
+  const activeExercise = upperAWorkout.exercises[store.activeExerciseIndex]
+  const activeLog = activeExercise
+    ? store.exerciseLogs[activeExercise.id]
+    : undefined
+  const reportInput = useMemo<MarkdownReportInput>(
+    () => ({
+      generatedAt: new Date(),
+      session: {
+        activeExerciseIndex: store.activeExerciseIndex,
+        activeView: store.activeView,
+        completedExerciseIds: store.completedExerciseIds,
+        dailyCheckin: store.dailyCheckin,
+        exerciseLogs: store.exerciseLogs,
+        recovery: store.recovery,
+        sessionStatus: store.sessionStatus,
+        warmupChecklist: store.warmupChecklist,
+        workoutId: store.workoutId,
+      },
+      workout: upperAWorkout,
+    }),
+    [
+      store.activeExerciseIndex,
+      store.activeView,
+      store.completedExerciseIds,
+      store.dailyCheckin,
+      store.exerciseLogs,
+      store.recovery,
+      store.sessionStatus,
+      store.warmupChecklist,
+      store.workoutId,
+    ]
   )
+  const recommendation = getReportRecommendation(reportInput)
+  const helpTopic = helpTopicId ? helpTopics[helpTopicId] : null
 
-  const recoveryRecommendation = useMemo(
-    () =>
-      getRecoveryRecommendation({
-        pain: getMaxPainValue(painLog),
-        worse24hAfter: painLog.worse24hAfter,
-        consecutiveAttentionCount: painLog.values.rightHallux >= 4 ? 1 : 0,
-      }),
-    [painLog]
-  )
-
-  function updateSetField(
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: NumericDraft
-  ) {
-    setSets((currentSets) =>
-      currentSets.map((set) =>
-        set.id === setId
-          ? {
-              ...set,
-              [field]: value,
-            }
-          : set
-      )
-    )
+  function handleStartSession() {
+    store.startSession()
+    toast.success("Treino iniciado.")
   }
 
-  function handleSetNumberChange(
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) {
-    const nextValue = normalizeNumericDraft(value, options)
+  function handleSaveExercise(exerciseId: string) {
+    store.saveExercise(exerciseId)
+    toast.success("Exercício salvo no diário local.")
+  }
 
-    if (nextValue !== null) {
-      updateSetField(setId, field, nextValue)
+  function handleNextExercise() {
+    if (isExerciseIncomplete(activeLog)) {
+      toast.warning("Você pode avançar, mas este exercício ainda está incompleto.")
     }
+
+    store.nextExercise()
   }
 
-  function handleSetNumberBlur(
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) {
-    updateSetField(setId, field, finalizeNumericDraft(value, options))
+  function handlePreviousExercise() {
+    store.previousExercise()
   }
 
   function handleFinishDiary() {
-    toast.info("Salvando histórico local...")
-    setActiveTab("today")
-    setExerciseSaved(false)
-    setWarmupDone(false)
-    toast.success("Concluído! Próxima sessão ajustada no mock.")
+    store.finishDiary()
+    toast.success("Diário salvo. Relatório disponível na tela Hoje.")
   }
-
-  const helpTopic = helpTopicId ? helpTopics[helpTopicId] : null
 
   return (
     <div className="min-h-svh overflow-x-clip bg-stone-100 text-foreground">
@@ -298,46 +270,52 @@ export function RecoveryFitApp() {
           title={activeTitle}
           onOpenExport={() => setReportOpen(true)}
         />
-        <main className="min-w-0 flex-1 overflow-y-auto px-5 pb-24 pt-5">
-          {activeTab === "today" ? (
-            <TodayView
-              checkin={checkin}
-              recommendation={activeRecommendation}
-              onChangeCheckin={setCheckin}
-              onOpenHelp={setHelpTopicId}
-              onStartSession={() => setActiveTab("session")}
-            />
-          ) : null}
-          {activeTab === "session" ? (
-            <SessionView
-              exerciseSaved={exerciseSaved}
-              sets={sets}
-              warmupDone={warmupDone}
-              onChangeNumber={handleSetNumberChange}
-              onBlurNumber={handleSetNumberBlur}
-              onFinishSession={() => setActiveTab("recovery")}
-              onOpenHelp={setHelpTopicId}
-              onSaveExercise={() => {
-                setExerciseSaved(true)
-                toast.success("Séries salvas no diário local.")
-              }}
-              onToggleWarmup={() => {
-                setWarmupDone(true)
-                toast.success("Aquecimento registrado.")
-              }}
-            />
-          ) : null}
-          {activeTab === "recovery" ? (
-            <RecoveryView
-              painLog={painLog}
-              recommendation={recoveryRecommendation}
-              onChangePainLog={setPainLog}
-              onFinishDiary={handleFinishDiary}
-              onOpenHelp={setHelpTopicId}
-            />
-          ) : null}
+        <main className="min-w-0 flex-1 overflow-y-auto px-5 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5">
+          <ViewTransition view={store.activeView}>
+            {store.activeView === "today" ? (
+              <TodayView
+                completionCount={formatCompletionCount(
+                  store.completedExerciseIds.length,
+                  upperAWorkout.exercises.length
+                )}
+                dailyCheckin={store.dailyCheckin}
+                recommendation={recommendation}
+                sessionStatus={store.sessionStatus}
+                onChangeCheckin={store.updateDailyCheckin}
+                onOpenExport={() => setReportOpen(true)}
+                onOpenHelp={setHelpTopicId}
+                onResetSession={store.resetSession}
+                onStartSession={handleStartSession}
+              />
+            ) : null}
+            {store.activeView === "session" && activeExercise ? (
+              <SessionView
+                activeExercise={activeExercise}
+                activeExerciseIndex={store.activeExerciseIndex}
+                completedExerciseIds={store.completedExerciseIds}
+                exerciseLog={activeLog}
+                warmupChecklist={store.warmupChecklist}
+                onChangeSet={store.updateSet}
+                onNextExercise={handleNextExercise}
+                onOpenHelp={setHelpTopicId}
+                onPreviousExercise={handlePreviousExercise}
+                onSaveExercise={handleSaveExercise}
+                onToggleWarmupItem={store.toggleWarmupItem}
+                onUpdateNote={store.updateExerciseNote}
+              />
+            ) : null}
+            {store.activeView === "recovery" ? (
+              <RecoveryView
+                recovery={store.recovery}
+                recommendation={recommendation}
+                onChangeRecovery={store.updateRecovery}
+                onFinishDiary={handleFinishDiary}
+                onOpenHelp={setHelpTopicId}
+              />
+            ) : null}
+          </ViewTransition>
         </main>
-        <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
+        <BottomNav activeView={store.activeView} onChangeView={store.setActiveView} />
       </div>
 
       <HelpDrawer
@@ -350,10 +328,27 @@ export function RecoveryFitApp() {
         }}
       />
       <ReportDrawer
-        markdown={reportMarkdown}
+        input={reportInput}
         open={reportOpen}
         onOpenChange={setReportOpen}
       />
+    </div>
+  )
+}
+
+function ViewTransition({
+  children,
+  view,
+}: {
+  children: ReactNode
+  view: AppView
+}) {
+  return (
+    <div
+      key={view}
+      className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-150 motion-reduce:transform-none motion-reduce:animate-none"
+    >
+      {children}
     </div>
   )
 }
@@ -366,11 +361,9 @@ function AppHeader({
   onOpenExport: () => void
 }) {
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-card px-5 pb-4 pt-10">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-card px-5 pb-4 pt-[calc(2.5rem+env(safe-area-inset-top))]">
       <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold tracking-tight">
-          {title}
-        </h1>
+        <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
         <p className="text-sm font-medium text-muted-foreground">
           Progressão segura
         </p>
@@ -398,19 +391,28 @@ function AppHeader({
 }
 
 function TodayView({
-  checkin,
+  completionCount,
+  dailyCheckin,
   recommendation,
+  sessionStatus,
   onChangeCheckin,
+  onOpenExport,
   onOpenHelp,
+  onResetSession,
   onStartSession,
 }: {
-  checkin: DailyCheckinState
-  recommendation: ReturnType<typeof getRecoveryRecommendation>
-  onChangeCheckin: (checkin: DailyCheckinState) => void
+  completionCount: string
+  dailyCheckin: ReturnType<typeof useRecoveryFitStore.getState>["dailyCheckin"]
+  recommendation: ReturnType<typeof getReportRecommendation>
+  sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  onChangeCheckin: ReturnType<typeof useRecoveryFitStore.getState>["updateDailyCheckin"]
+  onOpenExport: () => void
   onOpenHelp: (topic: HelpTopicId) => void
+  onResetSession: () => void
   onStartSession: () => void
 }) {
   const tone = toneClasses[recommendation.tone]
+  const completed = sessionStatus === "completed"
 
   return (
     <div className="flex flex-col gap-5">
@@ -426,7 +428,7 @@ function TodayView({
         <BrainCircuitIcon className={cn("mt-0.5 size-5 shrink-0", tone.icon)} />
         <span className="min-w-0 wrap-break-word">
           <span className={cn("block text-sm font-semibold", tone.text)}>
-            Regra ativa: {recommendation.title}
+            Dose de hoje: {recommendation.title}
           </span>
           <span className={cn("mt-1 block text-xs leading-relaxed", tone.text)}>
             {recommendation.message}
@@ -434,40 +436,25 @@ function TodayView({
         </span>
       </button>
 
-      <Card>
-        <CardHeader>
-          <div>
-            <Badge variant="secondary" className="mb-2 uppercase">
-              {workoutSummary.statusLabel}
-            </Badge>
-            <CardTitle className="text-lg">{workoutSummary.name}</CardTitle>
-            <CardDescription>
-              {workoutSummary.focus} - {workoutSummary.exerciseCount} exercícios
-            </CardDescription>
-          </div>
-          <CardAction>
-            <DumbbellIcon className="size-6 text-muted-foreground/60" />
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground wrap-break-word">
-            Ativo hoje: {workoutSummary.activeExercise.name}.{" "}
-            {workoutSummary.activeExercise.safetyNote}
-          </p>
-        </CardContent>
-        <CardFooter>
-          <Button className="w-full" onClick={onStartSession}>
-            <PlayIcon data-icon="inline-start" />
-            Iniciar treino
-          </Button>
-        </CardFooter>
-      </Card>
+      {completed ? (
+        <CompletedDayCard
+          completionCount={completionCount}
+          onOpenExport={onOpenExport}
+          onResetSession={onResetSession}
+        />
+      ) : (
+        <WorkoutTodayCard
+          completionCount={completionCount}
+          sessionStatus={sessionStatus}
+          onStartSession={onStartSession}
+        />
+      )}
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ActivityIcon className="size-4 text-muted-foreground" />
-            Check-in diário
+            Check-in do dia
           </CardTitle>
           <CardDescription>
             Pequenos sinais de alimentação e recuperação de hoje.
@@ -476,60 +463,52 @@ function TodayView({
         <CardContent className="flex flex-col gap-5">
           <div className="grid grid-cols-2 gap-3">
             <CheckinToggle
-              checked={checkin.snack17hDone}
+              checked={dailyCheckin.snack17hDone}
               label="Lanche 17h feito"
               tone="success"
               onChange={(checked) =>
-                onChangeCheckin({ ...checkin, snack17hDone: checked })
+                onChangeCheckin({ snack17hDone: checked })
               }
             />
             <CheckinToggle
-              checked={checkin.hadTea}
-              label="Tomou chás"
+              checked={dailyCheckin.hadTea}
+              label="Tomou chá"
               tone="neutral"
-              onChange={(checked) =>
-                onChangeCheckin({ ...checkin, hadTea: checked })
-              }
+              onChange={(checked) => onChangeCheckin({ hadTea: checked })}
             />
             <CheckinToggle
-              checked={checkin.ateUltraprocessed}
+              checked={dailyCheckin.ateUltraprocessed}
               label="Ultraprocessados"
               tone="danger"
               onChange={(checked) =>
-                onChangeCheckin({ ...checkin, ateUltraprocessed: checked })
+                onChangeCheckin({ ateUltraprocessed: checked })
               }
             />
             <CheckinToggle
-              checked={checkin.gastricSymptoms}
+              checked={dailyCheckin.gastricSymptoms}
               label="Sintoma gástrico"
               tone="warning"
               onChange={(checked) =>
-                onChangeCheckin({ ...checkin, gastricSymptoms: checked })
+                onChangeCheckin({ gastricSymptoms: checked })
               }
             />
           </div>
 
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
-              <label
-                className="text-sm font-medium"
-                htmlFor="hunger-before-dinner"
-              >
+              <label className="text-sm font-medium" htmlFor="hunger-before-dinner">
                 Fome antes do jantar
               </label>
-              <Badge variant="outline">{checkin.hungerBeforeDinner}/10</Badge>
+              <Badge variant="outline">{dailyCheckin.hungerBeforeDinner}/10</Badge>
             </div>
             <Slider
               id="hunger-before-dinner"
-              min={0}
               max={10}
+              min={0}
               step={1}
-              value={[checkin.hungerBeforeDinner]}
+              value={[dailyCheckin.hungerBeforeDinner]}
               onValueChange={([value]) =>
-                onChangeCheckin({
-                  ...checkin,
-                  hungerBeforeDinner: value ?? 0,
-                })
+                onChangeCheckin({ hungerBeforeDinner: value ?? 0 })
               }
             />
             <div className="flex justify-between text-[10px] font-semibold uppercase text-muted-foreground">
@@ -540,6 +519,116 @@ function TodayView({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function WorkoutTodayCard({
+  completionCount,
+  sessionStatus,
+  onStartSession,
+}: {
+  completionCount: string
+  sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  onStartSession: () => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <Badge variant="secondary" className="mb-2 uppercase">
+            {sessionStatus === "active" ? "Em andamento" : "Aguardando"}
+          </Badge>
+          <CardTitle className="text-lg">{upperAWorkout.name}</CardTitle>
+          <CardDescription>
+            {upperAWorkout.focus} — {upperAWorkout.exercises.length} exercícios
+          </CardDescription>
+        </div>
+        <CardAction>
+          <DumbbellIcon className="size-6 text-muted-foreground/60" />
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground wrap-break-word">
+          Progresso local: {completionCount} exercícios concluídos. Comece com
+          aquecimento para ombros, escápulas e hálux.
+        </p>
+      </CardContent>
+      <CardFooter>
+        <Button className="w-full" onClick={onStartSession}>
+          <PlayCircleIcon data-icon="inline-start" />
+          {sessionStatus === "active" ? "Continuar treino" : "Iniciar treino"}
+        </Button>
+      </CardFooter>
+    </Card>
+  )
+}
+
+function CompletedDayCard({
+  completionCount,
+  onOpenExport,
+  onResetSession,
+}: {
+  completionCount: string
+  onOpenExport: () => void
+  onResetSession: () => void
+}) {
+  return (
+    <Card className="ring-emerald-200">
+      <CardHeader>
+        <div>
+          <Badge className="mb-2 bg-emerald-100 text-emerald-800">
+            Diário concluído
+          </Badge>
+          <CardTitle className="text-lg">Treino salvo localmente</CardTitle>
+          <CardDescription>
+            {completionCount} exercícios concluídos. O relatório pode ser
+            exportado mesmo com campos incompletos.
+          </CardDescription>
+        </div>
+        <CardAction>
+          <CheckCircle2Icon className="size-6 text-emerald-600" />
+        </CardAction>
+      </CardHeader>
+      <CardFooter className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Button onClick={onOpenExport}>
+          <FileTextIcon data-icon="inline-start" />
+          Exportar relatório
+        </Button>
+        <ResetSessionDialog onResetSession={onResetSession} />
+      </CardFooter>
+    </Card>
+  )
+}
+
+function ResetSessionDialog({
+  onResetSession,
+}: {
+  onResetSession: () => void
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button variant="outline">
+          <RotateCcwIcon data-icon="inline-start" />
+          Novo diário
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Iniciar um novo diário?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Isso limpa a sessão local atual, incluindo séries, aquecimento,
+            check-in e recuperação. Exporte o relatório antes se quiser guardar.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={onResetSession}>
+            Iniciar novo
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -574,216 +663,242 @@ function CheckinToggle({
 }
 
 function SessionView({
-  exerciseSaved,
-  sets,
-  warmupDone,
-  onBlurNumber,
-  onChangeNumber,
-  onFinishSession,
+  activeExercise,
+  activeExerciseIndex,
+  completedExerciseIds,
+  exerciseLog,
+  warmupChecklist,
+  onChangeSet,
+  onNextExercise,
   onOpenHelp,
+  onPreviousExercise,
   onSaveExercise,
-  onToggleWarmup,
+  onToggleWarmupItem,
+  onUpdateNote,
 }: {
-  exerciseSaved: boolean
-  sets: SessionSetDraft[]
-  warmupDone: boolean
-  onBlurNumber: (
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) => void
-  onChangeNumber: (
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) => void
-  onFinishSession: () => void
+  activeExercise: WorkoutExercise
+  activeExerciseIndex: number
+  completedExerciseIds: string[]
+  exerciseLog: WorkoutExerciseLog | undefined
+  warmupChecklist: Record<string, boolean>
+  onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
+  onNextExercise: () => void
   onOpenHelp: (topic: HelpTopicId) => void
-  onSaveExercise: () => void
-  onToggleWarmup: () => void
+  onPreviousExercise: () => void
+  onSaveExercise: (exerciseId: string) => void
+  onToggleWarmupItem: (itemId: string) => void
+  onUpdateNote: ReturnType<typeof useRecoveryFitStore.getState>["updateExerciseNote"]
 }) {
+  const completed = completedExerciseIds.includes(activeExercise.id)
+  const warmupDoneCount = Object.values(warmupChecklist).filter(Boolean).length
+  const warmupIncomplete = warmupDoneCount < upperAWorkout.warmupItems.length
+  const incompleteExercise = isExerciseIncomplete(exerciseLog)
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-        <AlertCircleIcon className="mt-0.5 size-5 shrink-0 text-amber-600" />
-        <p className="leading-relaxed">
-          <strong>Atenção:</strong> hálux direito nível 5 ontem. Se sentir
-          irritação na base de apoio, reduza carga ou volume hoje.
-        </p>
-      </div>
+      <WarmupChecklist
+        checklist={warmupChecklist}
+        onOpenHelp={onOpenHelp}
+        onToggleItem={onToggleWarmupItem}
+      />
 
-      <Card className="bg-zinc-950 text-white ring-zinc-800">
-        <CardHeader>
-          <div>
-            <CardTitle className="text-white">Aquecimento obrigatório</CardTitle>
-            <CardDescription className="text-zinc-400">
-              Ombros, escápulas e hálux
-            </CardDescription>
-          </div>
-          <CardAction>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  aria-label={
-                    warmupDone
-                      ? "Aquecimento registrado"
-                      : "Registrar aquecimento"
-                  }
-                  size="icon"
-                  variant="outline"
-                  className="border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white"
-                  onClick={onToggleWarmup}
-                >
-                  {warmupDone ? (
-                    <CheckIcon data-icon="inline-start" />
-                  ) : (
-                    <PlayIcon data-icon="inline-start" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Registrar aquecimento</TooltipContent>
-            </Tooltip>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <button
-            type="button"
-            className="flex w-full flex-wrap gap-2 text-left"
-            onClick={() => onOpenHelp("warmup")}
-          >
-            {workoutSummary.warmupItems.map((item) => (
-              <Badge
-                key={item}
-                variant="outline"
-                className="border-zinc-700 text-zinc-200"
-              >
-                {item}
-              </Badge>
-            ))}
-          </button>
-        </CardContent>
-      </Card>
+      {warmupIncomplete ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+          Você pode seguir, mas o aquecimento ajuda a calibrar ombros e base do
+          pé.
+        </div>
+      ) : null}
 
-      <Card className={exerciseSaved ? "ring-emerald-300" : undefined}>
+      <Card className={completed ? "ring-emerald-300" : undefined}>
         <CardHeader className="border-b">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {exerciseSaved ? "Concluído" : "1 de 6"}
+              {activeExercise.order} de {upperAWorkout.exercises.length}
             </p>
-            <CardTitle
-              className={cn(
-                "text-lg",
-                exerciseSaved ? "text-emerald-700 line-through" : null
-              )}
-            >
-              {workoutSummary.activeExercise.name}
-            </CardTitle>
+            <CardTitle className="text-lg">{activeExercise.name}</CardTitle>
             <CardDescription>
-              {workoutSummary.activeExercise.safetyNote}
+              {activeExercise.plannedSets}×{activeExercise.repRange} · alvo RIR{" "}
+              {activeExercise.targetRir}
             </CardDescription>
           </div>
           <CardAction>
-            <Badge variant="secondary">
-              Alvo: RIR {workoutSummary.activeExercise.targetRir}
+            <Badge variant={completed ? "default" : "secondary"}>
+              {completed ? "Salvo" : "Em registro"}
             </Badge>
           </CardAction>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 pt-5">
-          <div className="grid grid-cols-[1.75rem_minmax(3.5rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5 px-1 text-[10px] font-semibold uppercase text-muted-foreground">
+        <CardContent className="flex flex-col gap-4 pt-5">
+          {activeExercise.observation ? (
+            <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              {activeExercise.observation}
+            </p>
+          ) : null}
+
+          <div className="grid grid-cols-[1.75rem_minmax(3.2rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5 px-1 text-[10px] font-semibold uppercase text-muted-foreground">
             <span>Série</span>
             <span className="text-center">Kg</span>
             <span className="text-center">Reps</span>
             <span className="text-center">RIR</span>
             <button
-              type="button"
               className="inline-flex items-center justify-center gap-1 text-rose-500"
+              type="button"
               onClick={() => onOpenHelp("painDuringExercise")}
             >
               Dor
               <HelpCircleIcon className="size-3" />
             </button>
           </div>
-          {sets.map((set) => (
-            <SessionSetRow
+
+          {exerciseLog?.sets.map((set) => (
+            <WorkoutSetRow
+              exerciseId={activeExercise.id}
               key={set.id}
               set={set}
-              onBlurNumber={onBlurNumber}
-              onChangeNumber={onChangeNumber}
+              onChangeSet={onChangeSet}
             />
           ))}
+
+          <PainRegionSelector
+            exerciseId={activeExercise.id}
+            exerciseLog={exerciseLog}
+            onChangeSet={onChangeSet}
+          />
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium" htmlFor="exercise-note">
+              Nota curta do exercício
+            </label>
+            <Textarea
+              id="exercise-note"
+              className="min-h-20 resize-none"
+              maxLength={240}
+              placeholder="Ex.: ombro ok, hálux sensível no apoio..."
+              value={exerciseLog?.note ?? ""}
+              onChange={(event) =>
+                onUpdateNote(activeExercise.id, event.currentTarget.value)
+              }
+            />
+          </div>
+
+          {incompleteExercise ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+              Exercício com campos essenciais incompletos. Você pode avançar,
+              mas o relatório vai marcar o que faltar.
+            </div>
+          ) : null}
         </CardContent>
-        <CardFooter className="border-t bg-muted/50">
-          <Button
-            className="w-full"
-            disabled={exerciseSaved}
-            variant={exerciseSaved ? "outline" : "default"}
-            onClick={onSaveExercise}
-          >
-            {exerciseSaved ? (
-              <CheckCircle2Icon data-icon="inline-start" />
-            ) : (
-              <CheckIcon data-icon="inline-start" />
-            )}
-            {exerciseSaved ? "Salvo" : "Salvar exercício"}
+        <CardFooter className="flex flex-col gap-2 border-t bg-muted/50">
+          <Button className="w-full" onClick={() => onSaveExercise(activeExercise.id)}>
+            <CheckIcon data-icon="inline-start" />
+            Salvar exercício
           </Button>
+          <div className="grid w-full grid-cols-2 gap-2">
+            <Button
+              disabled={activeExerciseIndex === 0}
+              variant="outline"
+              onClick={onPreviousExercise}
+            >
+              <ArrowLeftIcon data-icon="inline-start" />
+              Voltar
+            </Button>
+            {activeExerciseIndex === upperAWorkout.exercises.length - 1 ? (
+              <Button variant="outline" onClick={() => useRecoveryFitStore.getState().setActiveView("recovery")}>
+                Recuperação
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={onNextExercise}>
+                Avançar
+                <ArrowRightIcon data-icon="inline-end" />
+              </Button>
+            )}
+          </div>
         </CardFooter>
       </Card>
 
-      <Button
-        className="h-12 w-full"
-        variant="outline"
-        onClick={onFinishSession}
-      >
-        Encerrar treino e avaliar
-        <ArrowRightIcon data-icon="inline-end" />
-      </Button>
+      <ExerciseProgress completedExerciseIds={completedExerciseIds} />
     </div>
   )
 }
 
-function SessionSetRow({
-  set,
-  onBlurNumber,
-  onChangeNumber,
+function WarmupChecklist({
+  checklist,
+  onOpenHelp,
+  onToggleItem,
 }: {
-  set: SessionSetDraft
-  onBlurNumber: (
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) => void
-  onChangeNumber: (
-    setId: string,
-    field: keyof Omit<SessionSetDraft, "id" | "setNumber">,
-    value: string,
-    options: NumericOptions
-  ) => void
+  checklist: Record<string, boolean>
+  onOpenHelp: (topic: HelpTopicId) => void
+  onToggleItem: (itemId: string) => void
+}) {
+  const doneCount = Object.values(checklist).filter(Boolean).length
+
+  return (
+    <Card className="bg-zinc-950 text-white ring-zinc-800">
+      <CardHeader>
+        <div>
+          <CardTitle className="text-white">Aquecimento obrigatório</CardTitle>
+          <CardDescription className="text-zinc-400">
+            {doneCount}/{upperAWorkout.warmupItems.length} itens feitos
+          </CardDescription>
+        </div>
+        <CardAction>
+          <Button
+            aria-label="Ajuda do aquecimento"
+            className="border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white"
+            size="icon"
+            variant="outline"
+            onClick={() => onOpenHelp("warmup")}
+          >
+            <HelpCircleIcon data-icon="inline-start" />
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {upperAWorkout.warmupItems.map((item) => (
+          <label
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm"
+            key={item.id}
+          >
+            <Checkbox
+              checked={Boolean(checklist[item.id])}
+              className="mt-0.5 border-zinc-600"
+              onCheckedChange={() => onToggleItem(item.id)}
+            />
+            <span className="flex min-w-0 flex-col">
+              <span className="font-medium text-white">{item.label}</span>
+              <span className="text-xs text-zinc-400">{item.prescription}</span>
+            </span>
+          </label>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function WorkoutSetRow({
+  exerciseId,
+  set,
+  onChangeSet,
+}: {
+  exerciseId: string
+  set: WorkoutSetDraft
+  onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
 }) {
   return (
-    <div className="grid grid-cols-[1.75rem_minmax(3.5rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5">
+    <div className="grid grid-cols-[1.75rem_minmax(3.2rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5">
       <div className="grid size-7 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
         {set.setNumber}
       </div>
       <Input
-        aria-label={`Carga da serie ${set.setNumber}`}
+        aria-label={`Carga da série ${set.setNumber}`}
         className="h-11 px-1 text-center font-semibold"
         inputMode="decimal"
         min={0}
         step={0.5}
         type="number"
         value={set.loadKg}
-        onBlur={(event) =>
-          onBlurNumber(set.id, "loadKg", event.currentTarget.value, {
-            min: 0,
-          })
-        }
         onChange={(event) =>
-          onChangeNumber(set.id, "loadKg", event.currentTarget.value, {
-            min: 0,
-          })
+          onChangeSet(exerciseId, set.id, "loadKg", event.currentTarget.value)
         }
       />
       <Input
@@ -794,31 +909,16 @@ function SessionSetRow({
         step={1}
         type="number"
         value={set.reps}
-        onBlur={(event) =>
-          onBlurNumber(set.id, "reps", event.currentTarget.value, {
-            min: 1,
-            integer: true,
-          })
-        }
         onChange={(event) =>
-          onChangeNumber(set.id, "reps", event.currentTarget.value, {
-            min: 1,
-            integer: true,
-          })
+          onChangeSet(exerciseId, set.id, "reps", event.currentTarget.value)
         }
       />
       <Select
         value={set.rir}
-        onValueChange={(value) =>
-          onChangeNumber(set.id, "rir", value, {
-            min: 0,
-            max: 5,
-            integer: true,
-          })
-        }
+        onValueChange={(value) => onChangeSet(exerciseId, set.id, "rir", value)}
       >
         <SelectTrigger
-          aria-label={`RIR da serie ${set.setNumber}`}
+          aria-label={`RIR da série ${set.setNumber}`}
           className="h-11 w-full justify-center px-1 text-center font-semibold"
         >
           <SelectValue placeholder="-" />
@@ -834,7 +934,7 @@ function SessionSetRow({
         </SelectContent>
       </Select>
       <Input
-        aria-label={`Dor da serie ${set.setNumber}`}
+        aria-label={`Dor da série ${set.setNumber}`}
         className="h-11 border-rose-200 bg-rose-50/60 px-1 text-center font-semibold text-rose-700"
         inputMode="numeric"
         max={10}
@@ -842,59 +942,130 @@ function SessionSetRow({
         step={1}
         type="number"
         value={set.painDuring}
-        onBlur={(event) =>
-          onBlurNumber(set.id, "painDuring", event.currentTarget.value, {
-            min: 0,
-            max: 10,
-            integer: true,
-          })
-        }
         onChange={(event) =>
-          onChangeNumber(set.id, "painDuring", event.currentTarget.value, {
-            min: 0,
-            max: 10,
-            integer: true,
-          })
+          onChangeSet(exerciseId, set.id, "painDuring", event.currentTarget.value)
         }
       />
     </div>
   )
 }
 
+function PainRegionSelector({
+  exerciseId,
+  exerciseLog,
+  onChangeSet,
+}: {
+  exerciseId: string
+  exerciseLog: WorkoutExerciseLog | undefined
+  onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
+}) {
+  const setsWithPain =
+    exerciseLog?.sets.filter((set) => parseNumericDraft(set.painDuring) !== null) ??
+    []
+
+  if (setsWithPain.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-sm font-medium">Região da dor por série</span>
+      <div className="flex flex-col gap-2">
+        {setsWithPain.map((set) => (
+          <div className="grid grid-cols-[3rem_1fr] items-center gap-2" key={set.id}>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Série {set.setNumber}
+            </span>
+            <Select
+              value={set.painRegion || "none"}
+              onValueChange={(value) =>
+                onChangeSet(
+                  exerciseId,
+                  set.id,
+                  "painRegion",
+                  value === "none" ? "" : value
+                )
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecionar região" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="none">Não preenchido</SelectItem>
+                  {Object.entries(painRegionLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ExerciseProgress({
+  completedExerciseIds,
+}: {
+  completedExerciseIds: string[]
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Exercícios do Upper A</CardTitle>
+        <CardDescription>
+          {completedExerciseIds.length}/{upperAWorkout.exercises.length} salvos
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        {upperAWorkout.exercises.map((exercise) => {
+          const completed = completedExerciseIds.includes(exercise.id)
+
+          return (
+            <div
+              className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 text-sm"
+              key={exercise.id}
+            >
+              <span className="min-w-0 truncate">{exercise.name}</span>
+              <Badge variant={completed ? "default" : "outline"}>
+                {completed ? "Salvo" : `${exercise.plannedSets}×${exercise.repRange}`}
+              </Badge>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
 function RecoveryView({
-  painLog,
+  recovery,
   recommendation,
-  onChangePainLog,
+  onChangeRecovery,
   onFinishDiary,
   onOpenHelp,
 }: {
-  painLog: PainLogState
-  recommendation: ReturnType<typeof getRecoveryRecommendation>
-  onChangePainLog: (painLog: PainLogState) => void
+  recovery: ReturnType<typeof useRecoveryFitStore.getState>["recovery"]
+  recommendation: ReturnType<typeof getReportRecommendation>
+  onChangeRecovery: ReturnType<typeof useRecoveryFitStore.getState>["updateRecovery"]
   onFinishDiary: () => void
   onOpenHelp: (topic: HelpTopicId) => void
 }) {
   const tone = toneClasses[recommendation.tone]
 
-  function updatePainValue(regionId: PainRegionId, value: number) {
-    onChangePainLog({
-      ...painLog,
-      values: {
-        ...painLog.values,
-        [regionId]: value,
-      },
-    })
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <button
-        type="button"
         className={cn(
           "flex w-full items-start gap-3 rounded-xl border p-4 text-left",
           tone.surface,
           tone.border
         )}
+        type="button"
         onClick={() => onOpenHelp("recoveryCheckin")}
       >
         <ShieldCheckIcon className={cn("mt-0.5 size-5 shrink-0", tone.icon)} />
@@ -908,66 +1079,56 @@ function RecoveryView({
         </span>
       </button>
 
-      <Card>
-        <CardContent className="flex flex-col gap-3 pt-6">
-          <PainBooleanToggle
-            checked={painLog.worseThanYesterday}
-            label="A dor piorou em relação a ontem?"
-            onChange={(checked) =>
-              onChangePainLog({
-                ...painLog,
-                worseThanYesterday: checked,
-              })
-            }
-          />
-          <PainBooleanToggle
-            checked={painLog.worse24hAfter}
-            label="Ficou pior por mais de 24h?"
-            onChange={(checked) =>
-              onChangePainLog({
-                ...painLog,
-                worse24hAfter: checked,
-              })
-            }
-          />
-        </CardContent>
-      </Card>
-
       <div className="flex flex-col gap-4">
-        {painRegions.map((region) => (
+        {Object.entries(recoveryRegionLabels).map(([region, label]) => (
           <PainRegionCard
-            key={region.id}
-            label={region.label}
-            value={painLog.values[region.id]}
-            onChange={(value) => updatePainValue(region.id, value)}
+            key={region}
+            label={label}
+            value={recovery.pain[region as RecoveryRegionId]}
+            onChange={(value) =>
+              onChangeRecovery({
+                pain: {
+                  [region]: value,
+                } as Partial<typeof recovery.pain>,
+              })
+            }
           />
         ))}
       </div>
 
+      <Card>
+        <CardContent className="flex flex-col gap-4 pt-6">
+          <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border bg-card p-4 text-sm font-medium">
+            <span>Piorou em relação a ontem?</span>
+            <Checkbox
+              checked={recovery.worseThanYesterday}
+              onCheckedChange={(value) =>
+                onChangeRecovery({ worseThanYesterday: value === true })
+              }
+            />
+          </label>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium" htmlFor="recovery-notes">
+              Notas de recuperação
+            </label>
+            <Textarea
+              id="recovery-notes"
+              className="min-h-24 resize-none"
+              maxLength={500}
+              placeholder="Ex.: hálux sensível, ombro ok, sono ruim..."
+              value={recovery.notes}
+              onChange={(event) =>
+                onChangeRecovery({ notes: event.currentTarget.value })
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <Button className="h-12 w-full" onClick={onFinishDiary}>
-        Registrar e finalizar
+        Salvar diário
       </Button>
     </div>
-  )
-}
-
-function PainBooleanToggle({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean
-  label: string
-  onChange: (checked: boolean) => void
-}) {
-  return (
-    <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border bg-card p-4 text-sm font-medium">
-      <span>{label}</span>
-      <Checkbox
-        checked={checked}
-        onCheckedChange={(value) => onChange(value === true)}
-      />
-    </label>
   )
 }
 
@@ -1014,7 +1175,7 @@ function PainRegionCard({
         <div className="flex justify-between text-[10px] font-semibold uppercase text-muted-foreground">
           <span>Zero</span>
           <span>Atenção</span>
-          <span>Reduzir</span>
+          <span>Reduzir dose</span>
         </div>
       </CardContent>
     </Card>
@@ -1022,22 +1183,21 @@ function PainRegionCard({
 }
 
 function BottomNav({
-  activeTab,
-  onChangeTab,
+  activeView,
+  onChangeView,
 }: {
-  activeTab: AppTab
-  onChangeTab: (tab: AppTab) => void
+  activeView: AppView
+  onChangeView: (view: AppView) => void
 }) {
   return (
-    <nav className="fixed bottom-0 left-1/2 z-30 w-[min(100vw,28rem)] -translate-x-1/2 border-t bg-card px-5 py-3">
+    <nav className="fixed bottom-0 left-1/2 z-30 w-[min(100vw,28rem)] -translate-x-1/2 border-t bg-card px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <div className="grid grid-cols-3 gap-2">
         {tabConfig.map((tab) => {
           const Icon = tab.icon
-          const active = activeTab === tab.id
+          const active = activeView === tab.id
 
           return (
             <button
-              key={tab.id}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-semibold transition-colors",
@@ -1045,8 +1205,9 @@ function BottomNav({
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
               )}
+              key={tab.id}
               type="button"
-              onClick={() => onChangeTab(tab.id)}
+              onClick={() => onChangeView(tab.id)}
             >
               <Icon className="size-5" />
               <span className="max-w-full truncate">{tab.label}</span>
@@ -1108,16 +1269,17 @@ function HelpDrawer({
 }
 
 function ReportDrawer({
-  markdown,
+  input,
   open,
   onOpenChange,
 }: {
-  markdown: string
+  input: MarkdownReportInput
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [copyState, setCopyState] = useState<CopyState>("idle")
+  const markdown = useMemo(() => generateMarkdownReport(input), [input])
 
   useEffect(() => {
     if (copyState === "manual") {
@@ -1160,7 +1322,7 @@ function ReportDrawer({
             Exportar relatório
           </DrawerTitle>
           <DrawerDescription>
-            Markdown gerado localmente para copiar e colar em outra ferramenta.
+            Markdown gerado localmente com os dados atuais da sessão.
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-3 px-4">
@@ -1179,14 +1341,14 @@ function ReportDrawer({
               </span>
             ) : (
               <span>
-                A copia usa a Clipboard API. Se o navegador bloquear, o texto
+                A cópia usa a Clipboard API. Se o navegador bloquear, o texto
                 fica selecionável aqui.
               </span>
             )}
           </div>
           <Textarea
             ref={textareaRef}
-            aria-label="Relatorio Markdown"
+            aria-label="Relatório Markdown"
             className="h-72 resize-none font-mono text-xs leading-relaxed"
             readOnly
             value={markdown}

@@ -16,70 +16,70 @@ export type RecoveryRecommendation = {
 export function getPainSeverity(value: number): PainSeverityResult {
   if (value <= 3) {
     return {
-      severity: "tolerable",
-      tone: "success",
       label: `${value} - Tolerável`,
+      severity: "tolerable",
       shortLabel: "Tolerável",
+      tone: "success",
     }
   }
 
   if (value <= 5) {
     return {
-      severity: "attention",
-      tone: "warning",
       label: `${value} - Atenção`,
+      severity: "attention",
       shortLabel: "Atenção",
+      tone: "warning",
     }
   }
 
   return {
+    label: `${value} - Reduzir dose`,
     severity: "reduce",
+    shortLabel: "Reduzir dose",
     tone: "danger",
-    label: `${value} - Reduzir carga`,
-    shortLabel: "Reduzir",
   }
 }
 
 export function getRecoveryRecommendation({
-  pain,
-  worse24hAfter,
-  consecutiveAttentionCount,
+  hasEnoughData,
+  maxPain,
+  worseThanYesterday,
 }: {
-  pain: number
-  worse24hAfter: boolean
-  consecutiveAttentionCount: number
+  hasEnoughData: boolean
+  maxPain: number | null
+  worseThanYesterday: boolean
 }): RecoveryRecommendation {
-  if (pain >= 6 || worse24hAfter) {
+  if (!hasEnoughData || maxPain === null) {
     return {
-      tone: "danger",
+      message:
+        "Dados incompletos. Mantenha uma dose conservadora e registre dor/check-in antes de progredir.",
+      title: "Conservador",
+      tone: "warning",
+    }
+  }
+
+  if (maxPain > 5 || worseThanYesterday) {
+    return {
+      message:
+        "Dor alta ou piora pede reduzir carga/amplitude e evitar progressão no próximo treino.",
       title: "Reduzir dose",
-      message:
-        "Dor alta ou piora por mais de 24h pede reduzir 10-15%, ajustar amplitude ou remover temporariamente o exercício.",
+      tone: "danger",
     }
   }
 
-  if (consecutiveAttentionCount >= 2) {
+  if (maxPain >= 4) {
     return {
-      tone: "warning",
-      title: "Exercício em observação",
       message:
-        "Duas ocorrências seguidas de dor relevante indicam manter a carga e observar resposta antes de progredir.",
-    }
-  }
-
-  if (pain >= 4) {
-    return {
-      tone: "warning",
+        "Dor moderada pede manter dose, reduzir amplitude se necessário e observar a resposta.",
       title: "Manter ou ajustar",
-      message:
-        "Dor moderada pede manter dose, reduzir amplitude se necessário e evitar progressão hoje.",
+      tone: "warning",
     }
   }
 
   return {
-    tone: "info",
-    title: "Manter dose",
     message:
       "Sessão tolerada. Repita a dose antes de considerar progressão de carga.",
+    title: "Manter dose",
+    tone: "info",
   }
 }

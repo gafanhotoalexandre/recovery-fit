@@ -1,12 +1,17 @@
-export type AppTab = "today" | "session" | "recovery"
+export type AppView = "today" | "session" | "recovery"
+
+export type SessionStatus = "idle" | "active" | "completed"
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
 export type PainRegionId =
-  | "leftShoulder"
-  | "rightShoulder"
-  | "leftHallux"
-  | "rightHallux"
+  | "ombro_esquerdo"
+  | "ombro_direito"
+  | "halux_esquerdo"
+  | "halux_direito"
+  | "outra"
+
+export type RecoveryRegionId = Exclude<PainRegionId, "outra">
 
 export type PainSeverity = "tolerable" | "attention" | "reduce"
 
@@ -27,44 +32,62 @@ export type DailyCheckinState = {
   hungerBeforeDinner: number
 }
 
-export type SessionSetDraft = {
+export type WorkoutSetDraft = {
   id: string
   setNumber: number
   loadKg: NumericDraft
   reps: NumericDraft
   rir: NumericDraft
   painDuring: NumericDraft
+  painRegion: PainRegionId | ""
 }
 
-export type PainLogState = {
-  values: Record<PainRegionId, number>
+export type WorkoutExerciseLog = {
+  exerciseId: string
+  sets: WorkoutSetDraft[]
+  note: string
+}
+
+export type RecoveryState = {
+  pain: Record<RecoveryRegionId, number>
   worseThanYesterday: boolean
-  worse24hAfter: boolean
+  notes: string
 }
 
-export type PainRegion = {
-  id: PainRegionId
+export type WarmupItem = {
+  id: string
   label: string
-  shortLabel: string
+  prescription: string
 }
 
 export type WorkoutExercise = {
   id: string
   order: number
   name: string
-  targetRir: number
   plannedSets: number
-  safetyNote: string
+  repRange: string
+  targetRir: number
+  observation?: string
 }
 
-export type WorkoutSummary = {
+export type WorkoutPlan = {
   id: string
   name: string
-  statusLabel: string
   focus: string
-  exerciseCount: number
-  activeExercise: WorkoutExercise
-  warmupItems: string[]
+  warmupItems: WarmupItem[]
+  exercises: WorkoutExercise[]
+}
+
+export type RecoveryFitSessionState = {
+  activeView: AppView
+  sessionStatus: SessionStatus
+  workoutId: string
+  activeExerciseIndex: number
+  warmupChecklist: Record<string, boolean>
+  exerciseLogs: Record<string, WorkoutExerciseLog>
+  completedExerciseIds: string[]
+  dailyCheckin: DailyCheckinState
+  recovery: RecoveryState
 }
 
 export type HelpTopicSection = {
@@ -80,23 +103,23 @@ export type HelpTopic = {
   sections: HelpTopicSection[]
 }
 
+export type NormalizedWorkoutSet = {
+  setNumber: number
+  loadKg: number | null
+  reps: number | null
+  rir: number | null
+  painDuring: number | null
+  painRegion: PainRegionId | null
+}
+
+export type NormalizedExerciseLog = {
+  exerciseId: string
+  sets: NormalizedWorkoutSet[]
+  note: string
+}
+
 export type MarkdownReportInput = {
-  title: string
-  periodLabel: string
-  generatedAtLabel: string
-  workouts: {
-    completed: number
-    planned: number
-  }
-  painAverages: Array<{
-    region: string
-    average: number
-  }>
-  alerts: string[]
-  observedExercises: string[]
-  nutrition: Array<{
-    label: string
-    value: string
-  }>
-  notes: string[]
+  workout: WorkoutPlan
+  session: RecoveryFitSessionState
+  generatedAt: Date
 }

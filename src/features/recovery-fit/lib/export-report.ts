@@ -1,53 +1,197 @@
-import type { MarkdownReportInput } from "../types"
+import { painRegionLabels, recoveryRegionLabels } from "../mock-data"
+import {
+  normalizeExerciseLogDraft,
+  parseNumericDraft,
+} from "../schemas"
+import type {
+  MarkdownReportInput,
+  PainRegionId,
+  RecoveryFitSessionState,
+  WorkoutPlan,
+} from "../types"
+import { getRecoveryRecommendation } from "./recovery-rules"
 
-function formatPercent(completed: number, planned: number) {
-  if (planned <= 0) {
-    return "0%"
-  }
+const emptyValue = "não preenchido"
+const incompleteValue = "não concluído"
 
-  return `${Math.round((completed / planned) * 100)}%`
+function formatBoolean(value: boolean) {
+  return value ? "sim" : "não"
 }
 
-function formatList(items: string[]) {
-  if (items.length === 0) {
-    return "- Nenhum registro relevante."
+function formatNumber(value: number | null) {
+  return value === null ? emptyValue : String(value)
+}
+
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date)
+}
+
+function formatSessionStatus(status: RecoveryFitSessionState["sessionStatus"]) {
+  const labels = {
+    active: "ativo",
+    completed: "concluído",
+    idle: "não iniciado",
+  } satisfies Record<RecoveryFitSessionState["sessionStatus"], string>
+
+  return labels[status]
+}
+
+function getExercisePainValues(session: RecoveryFitSessionState) {
+  return Object.values(session.exerciseLogs).flatMap((log) =>
+    log.sets
+      .map((set) => parseNumericDraft(set.painDuring))
+      .filter((value): value is number => value !== null)
+  )
+}
+
+function getReportedPainRegions(session: RecoveryFitSessionState) {
+  const regions = new Set<PainRegionId>()
+
+  for (const log of Object.values(session.exerciseLogs)) {
+    for (const set of log.sets) {
+      const pain = parseNumericDraft(set.painDuring)
+
+      if (pain !== null && pain > 0 && set.painRegion !== "") {
+        regions.add(set.painRegion)
+      }
+    }
   }
 
-  return items.map((item) => `- ${item}`).join("\n")
+  return Array.from(regions)
+}
+
+function getRecoveryPainValues(session: RecoveryFitSessionState) {
+  return Object.values(session.recovery.pain)
+}
+
+function hasAnySessionData(session: RecoveryFitSessionState) {
+  return (
+    session.completedExerciseIds.length > 0 ||
+    getExercisePainValues(session).length > 0 ||
+    getRecoveryPainValues(session).some((value) => value > 0) ||
+    session.recovery.notes.trim().length > 0
+  )
+}
+
+function formatSetLine({
+  exerciseName,
+  setNumber,
+  loadKg,
+  reps,
+  rir,
+  painDuring,
+  painRegion,
+}: {
+  exerciseName: string
+  loadKg: number | null
+  painDuring: number | null
+  painRegion: PainRegionId | null
+  reps: number | null
+  rir: number | null
+  setNumber: number
+}) {
+  const region = painRegion ? painRegionLabels[painRegion] : emptyValue
+
+  return `- ${exerciseName} | série ${setNumber}: carga ${formatNumber(
+    loadKg
+  )} kg, reps ${formatNumber(reps)}, RIR ${formatNumber(
+    rir
+  )}, dor ${formatNumber(painDuring)}, região ${region}`
+}
+
+function formatExerciseSection(workout: WorkoutPlan, session: RecoveryFitSessionState) {
+  return workout.exercises
+    .map((exercise) => {
+      const log = session.exerciseLogs[exercise.id]
+      const completed = session.completedExerciseIds.includes(exercise.id)
+      const normalized = log ? normalizeExerciseLogDraft(log) : null
+      const setLines = normalized?.sets.map((set) =>
+        formatSetLine({
+          exerciseName: exercise.name,
+          ...set,
+        })
+      )
+
+      return [
+        `### ${exercise.order}. ${exercise.name}`,
+        `- Status: ${completed ? "concluído" : incompleteValue}`,
+        `- Planejado: ${exercise.plannedSets}×${exercise.repRange}, alvo RIR ${exercise.targetRir}`,
+        `- Nota: ${normalized?.note || emptyValue}`,
+        ...(setLines?.length ? setLines : ["- Séries: não preenchido"]),
+      ].join("\n")
+    })
+    .join("\n\n")
+}
+
+export function getReportRecommendation(input: MarkdownReportInput) {
+  const exercisePainValues = getExercisePainValues(input.session)
+  const recoveryPainValues = getRecoveryPainValues(input.session)
+  const allPainValues = [...exercisePainValues, ...recoveryPainValues]
+  const maxPain = allPainValues.length > 0 ? Math.max(...allPainValues) : null
+
+  return getRecoveryRecommendation({
+    hasEnoughData: hasAnySessionData(input.session),
+    maxPain,
+    worseThanYesterday: input.session.recovery.worseThanYesterday,
+  })
 }
 
 export function generateMarkdownReport(input: MarkdownReportInput) {
-  const adherence = formatPercent(input.workouts.completed, input.workouts.planned)
-  const painAverages = input.painAverages
-    .map((item) => `- ${item.region}: ${item.average.toFixed(1)}/10`)
-    .join("\n")
-  const nutrition = input.nutrition
-    .map((item) => `- ${item.label}: ${item.value}`)
-    .join("\n")
+  const { session, workout } = input
+  const exercisePainValues = getExercisePainValues(session)
+  const maxExercisePain =
+    exercisePainValues.length > 0 ? Math.max(...exercisePainValues) : null
+  const reportedRegions = getReportedPainRegions(session)
+  const recommendation = getReportRecommendation(input)
 
   return [
-    `# ${input.title} - ${input.periodLabel}`,
+    `# Relatório RecoveryFit — ${workout.name}`,
     "",
-    `Gerado em: ${input.generatedAtLabel}`,
+    `Gerado em: ${formatDateTime(input.generatedAt)}`,
     "",
-    "## Treinos",
-    `- Sessões concluídas: ${input.workouts.completed}`,
-    `- Sessões planejadas: ${input.workouts.planned}`,
-    `- Aderência: ${adherence}`,
+    "## Resumo",
+    `- Treino: ${workout.name}`,
+    `- Status da sessão: ${formatSessionStatus(session.sessionStatus)}`,
+    `- Exercícios concluídos: ${session.completedExerciseIds.length}/${workout.exercises.length}`,
+    `- Maior dor durante exercício: ${formatNumber(maxExercisePain)}`,
+    `- Regiões relatadas durante exercício: ${
+      reportedRegions.length > 0
+        ? reportedRegions.map((region) => painRegionLabels[region]).join(", ")
+        : emptyValue
+    }`,
     "",
-    "## Dor media",
-    painAverages,
+    "## Check-in do dia",
+    `- Lanche das 17h feito: ${formatBoolean(session.dailyCheckin.snack17hDone)}`,
+    `- Tomou chá: ${formatBoolean(session.dailyCheckin.hadTea)}`,
+    `- Ultraprocessados: ${formatBoolean(session.dailyCheckin.ateUltraprocessed)}`,
+    `- Sintoma gástrico: ${formatBoolean(session.dailyCheckin.gastricSymptoms)}`,
+    `- Fome antes do jantar: ${session.dailyCheckin.hungerBeforeDinner}/10`,
     "",
-    "## Alertas",
-    formatList(input.alerts),
+    "## Aquecimento",
+    ...workout.warmupItems.map(
+      (item) =>
+        `- ${item.label} (${item.prescription}): ${
+          session.warmupChecklist[item.id] ? "feito" : incompleteValue
+        }`
+    ),
     "",
-    "## Exercícios em observação",
-    formatList(input.observedExercises),
+    "## Exercícios e séries",
+    formatExerciseSection(workout, session),
     "",
-    "## Alimentação e recuperação",
-    nutrition,
+    "## Recuperação pós-treino",
+    ...Object.entries(session.recovery.pain).map(
+      ([region, value]) =>
+        `- ${recoveryRegionLabels[region as keyof typeof recoveryRegionLabels]}: ${value}/10`
+    ),
+    `- Piorou em relação a ontem: ${formatBoolean(
+      session.recovery.worseThanYesterday
+    )}`,
+    `- Notas: ${session.recovery.notes.trim() || emptyValue}`,
     "",
-    "## Notas",
-    formatList(input.notes),
+    "## Recomendação",
+    `- ${recommendation.title}: ${recommendation.message}`,
   ].join("\n")
 }

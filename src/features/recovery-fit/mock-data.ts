@@ -1,32 +1,112 @@
 import type {
   DailyCheckinState,
   HelpTopic,
-  MarkdownReportInput,
-  PainLogState,
-  PainRegion,
-  SessionSetDraft,
-  WorkoutSummary,
+  RecoveryState,
+  WarmupItem,
+  WorkoutPlan,
 } from "./types"
 
-export const workoutSummary: WorkoutSummary = {
-  id: "upper-a-safe",
-  name: "Upper A",
-  statusLabel: "Aguardando",
-  focus: "Peito, costas, braços e estabilização",
-  exerciseCount: 6,
-  activeExercise: {
-    id: "low-row-triangle",
-    order: 1,
-    name: "Remada Baixa Triângulo",
-    targetRir: 2,
-    plannedSets: 3,
-    safetyNote:
-      "Movimento puxado e controlado, sem desenvolvimento acima da cabeça.",
+export const warmupItems: WarmupItem[] = [
+  {
+    id: "shoulder-pendulum",
+    label: "Pêndulo de ombro",
+    prescription: "30–45s cada lado",
   },
-  warmupItems: [
-    "Ativação de escápulas",
-    "Controle de ombros",
-    "Mobilidade leve do hálux",
+  {
+    id: "band-scapular-retraction",
+    label: "Retração escapular com elástico",
+    prescription: "2×15",
+  },
+  {
+    id: "band-external-rotation",
+    label: "Rotação externa com elástico",
+    prescription: "2×15–20",
+  },
+  {
+    id: "hallux-mobility",
+    label: "Mobilidade do hálux",
+    prescription: "2×15 cada pé",
+  },
+  {
+    id: "short-foot",
+    label: "Short foot / arco do pé",
+    prescription: "2×10 contrações de 5s",
+  },
+  {
+    id: "slow-calf-raise",
+    label: "Elevação de panturrilha bilateral lenta",
+    prescription: "1×12 leve",
+  },
+]
+
+export const upperAWorkout: WorkoutPlan = {
+  id: "upper-a-v02",
+  name: "Upper A",
+  focus: "Peito controlado, costas fortes, braços e estabilização",
+  warmupItems,
+  exercises: [
+    {
+      id: "low-row",
+      order: 1,
+      name: "Remada baixa",
+      plannedSets: 3,
+      repRange: "8–12",
+      targetRir: 3,
+      observation:
+        "Começa por costas para organizar escápulas antes dos empurrões.",
+    },
+    {
+      id: "machine-incline-press",
+      order: 2,
+      name: "Supino inclinado máquina",
+      plannedSets: 3,
+      repRange: "6–10",
+      targetRir: 3,
+      observation: "Amplitude controlada, sem deixar o cotovelo descer demais.",
+    },
+    {
+      id: "front-pulldown",
+      order: 3,
+      name: "Puxada frontal neutra ou pronada",
+      plannedSets: 2,
+      repRange: "8–12",
+      targetRir: 3,
+      observation: "Puxa até a parte alta do peito sem jogar o ombro à frente.",
+    },
+    {
+      id: "dumbbell-flat-press",
+      order: 4,
+      name: "Supino reto com halteres",
+      plannedSets: 2,
+      repRange: "8–12",
+      targetRir: 3,
+      observation: "Pegada levemente neutra e cotovelos a 30–45º do tronco.",
+    },
+    {
+      id: "face-pull",
+      order: 5,
+      name: "Face pull",
+      plannedSets: 2,
+      repRange: "15–20",
+      targetRir: 3,
+      observation: "Puxa para testa/rosto com escápulas para trás.",
+    },
+    {
+      id: "barbell-curl",
+      order: 6,
+      name: "Rosca direta",
+      plannedSets: 2,
+      repRange: "8–12",
+      targetRir: 3,
+    },
+    {
+      id: "rope-triceps",
+      order: 7,
+      name: "Tríceps corda",
+      plannedSets: 2,
+      repRange: "10–15",
+      targetRir: 3,
+    },
   ],
 }
 
@@ -38,79 +118,44 @@ export const initialDailyCheckin: DailyCheckinState = {
   hungerBeforeDinner: 5,
 }
 
-export const initialSessionSets: SessionSetDraft[] = [
-  {
-    id: "set-1",
-    setNumber: 1,
-    loadKg: "45",
-    reps: "12",
-    rir: "2",
-    painDuring: "",
-  },
-  {
-    id: "set-2",
-    setNumber: 2,
-    loadKg: "",
-    reps: "",
-    rir: "",
-    painDuring: "",
-  },
-  {
-    id: "set-3",
-    setNumber: 3,
-    loadKg: "",
-    reps: "",
-    rir: "",
-    painDuring: "",
-  },
-]
-
-export const painRegions: PainRegion[] = [
-  {
-    id: "leftShoulder",
-    label: "Ombro esquerdo",
-    shortLabel: "Ombro E",
-  },
-  {
-    id: "rightShoulder",
-    label: "Ombro direito",
-    shortLabel: "Ombro D",
-  },
-  {
-    id: "leftHallux",
-    label: "Hálux esquerdo",
-    shortLabel: "Hálux E",
-  },
-  {
-    id: "rightHallux",
-    label: "Hálux direito",
-    shortLabel: "Hálux D",
-  },
-]
-
-export const initialPainLog: PainLogState = {
+export const initialRecovery: RecoveryState = {
   worseThanYesterday: false,
-  worse24hAfter: false,
-  values: {
-    leftShoulder: 0,
-    rightShoulder: 0,
-    leftHallux: 0,
-    rightHallux: 5,
+  notes: "",
+  pain: {
+    ombro_esquerdo: 0,
+    ombro_direito: 0,
+    halux_esquerdo: 0,
+    halux_direito: 0,
   },
 }
+
+export const painRegionLabels = {
+  ombro_esquerdo: "Ombro esquerdo",
+  ombro_direito: "Ombro direito",
+  halux_esquerdo: "Hálux esquerdo",
+  halux_direito: "Hálux direito",
+  outra: "Outra região",
+} as const
+
+export const recoveryRegionLabels = {
+  ombro_esquerdo: "Ombro esquerdo",
+  ombro_direito: "Ombro direito",
+  halux_esquerdo: "Hálux esquerdo",
+  halux_direito: "Hálux direito",
+} as const
 
 export const helpTopics: Record<HelpTopic["id"], HelpTopic> = {
   activeRule: {
     id: "activeRule",
-    title: "Regra ativa",
+    title: "Dose de hoje",
     description:
-      "A regra resume a resposta recente do corpo e transforma isso em uma dose prudente para a próxima sessão.",
+      "A dose resume a resposta recente do corpo e orienta a progressão conservadora.",
     sections: [
       {
         bullets: [
-          "Dor até 3/10 sem piora por 24h: manter dose antes de progredir.",
-          "Dor 4-5/10: manter carga ou reduzir amplitude.",
-          "Dor 6+/10: reduzir 10-15% ou remover temporariamente o exercício.",
+          "Dor até 3/10 durante o exercício: ok.",
+          "Dor 4–5/10: reduza carga ou amplitude.",
+          "Dor acima de 5/10 ou piora por 24h: o exercício errou a dose.",
         ],
       },
     ],
@@ -119,13 +164,13 @@ export const helpTopics: Record<HelpTopic["id"], HelpTopic> = {
     id: "painDuringExercise",
     title: "Dor durante o exercício",
     description:
-      "Use este campo para registrar dor percebida durante a série, sem tentar compensar técnica ou aumentar carga.",
+      "Registre a maior dor percebida na série, sem tentar compensar técnica ou aumentar carga.",
     sections: [
       {
         bullets: [
-          "0-3: tolerável, desde que não piore depois.",
-          "4-5: sinal de atenção; mantenha ou ajuste.",
-          "6-10: interrompa a progressão e reduza dose.",
+          "0–3: tolerável, desde que não piore depois.",
+          "4–5: atenção; mantenha ou ajuste.",
+          "6–10: reduza dose e evite progressão.",
         ],
       },
     ],
@@ -134,28 +179,24 @@ export const helpTopics: Record<HelpTopic["id"], HelpTopic> = {
     id: "warmup",
     title: "Aquecimento obrigatório",
     description:
-      "O aquecimento prepara ombros, escápulas e hálux para uma sessão mais previsível.",
+      "O aquecimento prepara ombros, escápulas e hálux antes da sessão principal.",
     sections: [
       {
-        bullets: [
-          "Escápulas: controle e depressão leve.",
-          "Ombros: ativação sem dor e sem amplitude forçada.",
-          "Hálux: mobilidade leve e apoio confortável.",
-        ],
+        bullets: warmupItems.map((item) => `${item.label} — ${item.prescription}`),
       },
     ],
   },
   recoveryCheckin: {
     id: "recoveryCheckin",
-    title: "Check-in de recuperação",
+    title: "Recuperação",
     description:
-      "A dor no dia seguinte pesa mais do que a dor isolada ao terminar o treino.",
+      "A dor pós-treino e a piora em relação a ontem guiam a próxima dose.",
     sections: [
       {
         bullets: [
-          "Marque piora em relação a ontem quando o desconforto subir de forma clara.",
-          "Marque piora 24h+ quando a resposta ruim persistir ate o dia seguinte.",
-          "Esses sinais seguram a progressão mesmo se a sessão parecer boa na hora.",
+          "Registre ombros e hálux de 0 a 10.",
+          "A piora no dia seguinte pesa mais do que a dor isolada ao terminar.",
+          "Notas curtas ajudam a explicar contexto, sono ou irritação incomum.",
         ],
       },
     ],
@@ -164,49 +205,15 @@ export const helpTopics: Record<HelpTopic["id"], HelpTopic> = {
     id: "exportReport",
     title: "Exportar Markdown",
     description:
-      "O relatório resume treino, dor e recuperação em um formato fácil de colar em outra ferramenta.",
+      "O relatório usa o estado local atual e funciona mesmo com sessão incompleta.",
     sections: [
       {
         bullets: [
-          "A cópia usa a Clipboard API do navegador.",
-          "Se a cópia automática falhar, o texto fica selecionável para cópia manual.",
-          "Nenhum dado é enviado para backend nesta POC.",
+          "Campos ausentes aparecem como não preenchido.",
+          "A cópia usa Clipboard API e tem fallback selecionável.",
+          "Nenhum dado é enviado para backend nesta fase.",
         ],
       },
     ],
   },
-}
-
-export const reportInput: MarkdownReportInput = {
-  title: "Relatório RecoveryFit",
-  periodLabel: "Últimos 7 dias",
-  generatedAtLabel: "10/06/2026",
-  workouts: {
-    completed: 3,
-    planned: 4,
-  },
-  painAverages: [
-    { region: "Ombro esquerdo", average: 2.8 },
-    { region: "Ombro direito", average: 2.1 },
-    { region: "Hálux esquerdo", average: 3.4 },
-    { region: "Hálux direito", average: 2.6 },
-  ],
-  alerts: [
-    "Hálux esquerdo passou de 4/10 em 2 dias.",
-    "Dor piorou por mais de 24h após Lower A.",
-  ],
-  observedExercises: [
-    "Leg press: dor no hálux esquerdo relatada em 2 sessões.",
-    "Supino inclinado máquina: ombro esquerdo 4/10 em 1 sessão.",
-  ],
-  nutrition: [
-    { label: "Lanche das 17h feito", value: "4/7 dias" },
-    { label: "Ultraprocessados", value: "3/7 dias" },
-    { label: "Sintomas gástricos", value: "2/7 dias" },
-    { label: "Fome média antes do jantar", value: "7/10" },
-  ],
-  notes: [
-    "Manter progressão conservadora até estabilizar resposta do hálux.",
-    "Sem integração com IA nesta fase; relatório é apenas copiável.",
-  ],
 }
