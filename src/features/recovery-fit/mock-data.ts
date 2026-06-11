@@ -1,10 +1,29 @@
 import type {
   DailyCheckinState,
   HelpTopic,
+  PlannedWorkout,
   RecoveryState,
+  WeekdayId,
+  WeeklyScheduleItem,
   WarmupItem,
   WorkoutPlan,
 } from "./types"
+
+export const weekdayOrder: WeekdayId[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+]
+
+export function getWeekdayId(date = new Date()): WeekdayId {
+  const weekday = date.getDay()
+
+  return weekdayOrder[(weekday + 6) % 7] ?? "monday"
+}
 
 export const warmupItems: WarmupItem[] = [
   {
@@ -109,6 +128,98 @@ export const upperAWorkout: WorkoutPlan = {
     },
   ],
 }
+
+export const plannedWorkouts: Record<string, PlannedWorkout> = {
+  [upperAWorkout.id]: {
+    id: upperAWorkout.id,
+    name: upperAWorkout.name,
+    focus: upperAWorkout.focus,
+    status: "available",
+  },
+  "lower-a-v02": {
+    id: "lower-a-v02",
+    name: "Lower A",
+    focus: "Pernas sem agredir hálux",
+    status: "planned",
+  },
+  "upper-b-v02": {
+    id: "upper-b-v02",
+    name: "Upper B",
+    focus: "Ombro terapêutico + hipertrofia",
+    status: "planned",
+  },
+  "lower-b-v02": {
+    id: "lower-b-v02",
+    name: "Lower B",
+    focus: "Pernas + estabilidade do pé",
+    status: "planned",
+  },
+}
+
+export const weeklySchedule: WeeklyScheduleItem[] = [
+  {
+    id: "monday",
+    shortLabel: "Seg",
+    label: "Segunda",
+    activityKind: "workout",
+    title: "Upper A",
+    description: plannedWorkouts[upperAWorkout.id].focus,
+    workoutId: upperAWorkout.id,
+  },
+  {
+    id: "tuesday",
+    shortLabel: "Ter",
+    label: "Terça",
+    activityKind: "swim",
+    title: "Natação",
+    description:
+      "Hoje é dia de natação. Se quiser registrar treino de academia, selecione outro dia da semana.",
+  },
+  {
+    id: "wednesday",
+    shortLabel: "Qua",
+    label: "Quarta",
+    activityKind: "workout",
+    title: "Lower A",
+    description: plannedWorkouts["lower-a-v02"].focus,
+    workoutId: "lower-a-v02",
+  },
+  {
+    id: "thursday",
+    shortLabel: "Qui",
+    label: "Quinta",
+    activityKind: "swim",
+    title: "Natação",
+    description:
+      "Hoje é dia de natação. Se quiser registrar treino de academia, selecione outro dia da semana.",
+  },
+  {
+    id: "friday",
+    shortLabel: "Sex",
+    label: "Sexta",
+    activityKind: "workout",
+    title: "Upper B",
+    description: plannedWorkouts["upper-b-v02"].focus,
+    workoutId: "upper-b-v02",
+  },
+  {
+    id: "saturday",
+    shortLabel: "Sáb",
+    label: "Sábado",
+    activityKind: "workout",
+    title: "Lower B",
+    description: plannedWorkouts["lower-b-v02"].focus,
+    workoutId: "lower-b-v02",
+  },
+  {
+    id: "sunday",
+    shortLabel: "Dom",
+    label: "Domingo",
+    activityKind: "rest",
+    title: "Descanso",
+    description: "Dia de reduzir dose, observar sinais e recuperar ombros e pés.",
+  },
+]
 
 export const initialDailyCheckin: DailyCheckinState = {
   snack17hDone: false,

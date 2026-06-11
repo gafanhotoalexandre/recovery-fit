@@ -1,15 +1,18 @@
 # RecoveryFit
 
-POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.2 deixa de ser apenas vitrine e vira uma ferramenta local de sessão de treino, ainda sem backend.
+POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.2.1 estabiliza a sessão local e adiciona agenda semanal sem backend.
 
-## Estado atual — v0.2
+## Estado atual — v0.2.1
 
 Inclui:
 
 - Fluxo local `Hoje -> Treino -> Recuperação`.
 - Store Zustand com persistência seletiva em `localStorage`.
 - Validação com Zod para drafts e dados normalizados.
+- Agenda semanal local tipada, com destaque do dia atual e seleção manual de dia.
 - Treino `Upper A` completo.
+- Lower A, Upper B e Lower B planejados na agenda, ainda sem fluxo completo.
+- Natação nas terças/quintas e descanso no domingo.
 - Checklist real de aquecimento para ombros, escápulas e hálux.
 - Registro de séries por exercício com carga, reps, RIR, dor e região opcional.
 - Navegação entre exercícios, com salvar/avançar/voltar.
@@ -61,7 +64,7 @@ Pontos principais:
 
 - `store.ts`: estado local da sessão com Zustand `persist`, `version`, `migrate` e `partialize`.
 - `schemas.ts`: validação Zod para drafts e dados normalizados.
-- `mock-data.ts`: treino Upper A, aquecimento, labels e ajuda contextual.
+- `mock-data.ts`: agenda semanal, treinos planejados, treino Upper A, aquecimento, labels e ajuda contextual.
 - `lib/recovery-rules.ts`: regras puras de dor/recomendação.
 - `lib/export-report.ts`: relatório Markdown baseado no estado local atual.
 - `index.tsx`: UI da feature, drawers e fluxo de interação.
@@ -70,7 +73,7 @@ A store persiste somente dados de sessão, check-in e recuperação. Drawers, to
 
 ## Supabase depois
 
-O projeto Supabase planejado é `sys_recoveryfit` (`rlqnloolkxsnqpggvvfn`). Quando a fase de backend começar, usar:
+O projeto Supabase fica para fase futura. Quando a fase de backend começar, usar:
 
 ```bash
 npm install @supabase/supabase-js
@@ -85,8 +88,9 @@ npx supabase ...
 Variáveis previstas:
 
 ```env
-VITE_SUPABASE_URL=https://rlqnloolkxsnqpggvvfn.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_NTftbX1UCFsQK5d8lVk8Vg_jtMca2bN
+VITE_SUPABASE_URL=<SUPABASE_PROJECT_URL>
+VITE_SUPABASE_PUBLISHABLE_KEY=<SUPABASE_PUBLISHABLE_KEY>
+SUPABASE_PROJECT_REF=<SUPABASE_PROJECT_REF>
 ```
 
 ## Limite clínico

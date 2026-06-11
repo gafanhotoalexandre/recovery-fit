@@ -7,6 +7,7 @@ import type {
   MarkdownReportInput,
   PainRegionId,
   RecoveryFitSessionState,
+  WeeklyScheduleItem,
   WorkoutPlan,
 } from "../types"
 import { getRecoveryRecommendation } from "./recovery-rules"
@@ -37,6 +38,16 @@ function formatSessionStatus(status: RecoveryFitSessionState["sessionStatus"]) {
   } satisfies Record<RecoveryFitSessionState["sessionStatus"], string>
 
   return labels[status]
+}
+
+function formatActivityKind(kind: WeeklyScheduleItem["activityKind"]) {
+  const labels = {
+    rest: "descanso",
+    swim: "natação",
+    workout: "treino de academia",
+  } satisfies Record<WeeklyScheduleItem["activityKind"], string>
+
+  return labels[kind]
 }
 
 function getExercisePainValues(session: RecoveryFitSessionState) {
@@ -126,7 +137,7 @@ function formatExerciseSection(workout: WorkoutPlan, session: RecoveryFitSession
     .join("\n\n")
 }
 
-export function getReportRecommendation(input: MarkdownReportInput) {
+export function getReportRecommendation(input: Pick<MarkdownReportInput, "session">) {
   const exercisePainValues = getExercisePainValues(input.session)
   const recoveryPainValues = getRecoveryPainValues(input.session)
   const allPainValues = [...exercisePainValues, ...recoveryPainValues]
@@ -140,7 +151,7 @@ export function getReportRecommendation(input: MarkdownReportInput) {
 }
 
 export function generateMarkdownReport(input: MarkdownReportInput) {
-  const { session, workout } = input
+  const { selectedScheduleItem, session, workout } = input
   const exercisePainValues = getExercisePainValues(session)
   const maxExercisePain =
     exercisePainValues.length > 0 ? Math.max(...exercisePainValues) : null
@@ -151,6 +162,17 @@ export function generateMarkdownReport(input: MarkdownReportInput) {
     `# Relatório RecoveryFit — ${workout.name}`,
     "",
     `Gerado em: ${formatDateTime(input.generatedAt)}`,
+    "",
+    "## Plano selecionado",
+    `- Dia: ${selectedScheduleItem.label}`,
+    `- Atividade: ${selectedScheduleItem.title}`,
+    `- Tipo: ${formatActivityKind(selectedScheduleItem.activityKind)}`,
+    `- Descrição: ${selectedScheduleItem.description}`,
+    "",
+    "## Sessão registrada",
+    `- Treino registrado: ${workout.name}`,
+    `- Status da sessão: ${formatSessionStatus(session.sessionStatus)}`,
+    `- Exercícios concluídos: ${session.completedExerciseIds.length}/${workout.exercises.length}`,
     "",
     "## Resumo",
     `- Treino: ${workout.name}`,

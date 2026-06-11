@@ -1,4 +1,4 @@
-import {
+﻿import {
   ActivityIcon,
   AlertCircleIcon,
   ArrowLeftIcon,
@@ -6,7 +6,6 @@ import {
   BrainCircuitIcon,
   CheckCircle2Icon,
   CheckIcon,
-  ClipboardIcon,
   DumbbellIcon,
   FileTextIcon,
   HelpCircleIcon,
@@ -15,7 +14,7 @@ import {
   RotateCcwIcon,
   ShieldCheckIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import {
@@ -41,15 +40,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -68,32 +58,35 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
+import { HelpDrawer } from "./components/help-drawer"
 import {
+  ReportDrawer,
+  type ReportDraftInput,
+} from "./components/report-drawer"
+import {
+  getWeekdayId,
   helpTopics,
   painRegionLabels,
+  plannedWorkouts,
   recoveryRegionLabels,
   upperAWorkout,
+  weeklySchedule,
 } from "./mock-data"
-import {
-  generateMarkdownReport,
-  getReportRecommendation,
-} from "./lib/export-report"
+import { getReportRecommendation } from "./lib/export-report"
 import { getPainSeverity } from "./lib/recovery-rules"
 import { parseNumericDraft } from "./schemas"
 import { useRecoveryFitStore } from "./store"
 import type {
   AppView,
-  HelpTopic,
   HelpTopicId,
-  MarkdownReportInput,
   RecoveryRegionId,
+  WeekdayId,
   Tone,
+  WeeklyScheduleItem,
   WorkoutExercise,
   WorkoutExerciseLog,
   WorkoutSetDraft,
 } from "./types"
-
-type CopyState = "idle" | "copied" | "manual"
 
 const tabConfig: Array<{
   id: AppView
@@ -153,33 +146,6 @@ const toneClasses: Record<
   },
 }
 
-function copyWithExecCommand(text: string) {
-  const textarea = document.createElement("textarea")
-  textarea.value = text
-  textarea.setAttribute("readonly", "")
-  textarea.style.left = "-9999px"
-  textarea.style.position = "fixed"
-  textarea.style.top = "0"
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-
-  try {
-    return document.execCommand("copy")
-  } finally {
-    document.body.removeChild(textarea)
-  }
-}
-
-async function copyReportToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return true
-  }
-
-  return copyWithExecCommand(text)
-}
-
 function isExerciseIncomplete(log: WorkoutExerciseLog | undefined) {
   if (!log) {
     return true
@@ -194,20 +160,31 @@ function formatCompletionCount(completed: number, total: number) {
   return `${completed}/${total}`
 }
 
+function getScheduleItem(dayId: WeekdayId) {
+  return weeklySchedule.find((item) => item.id === dayId) ?? weeklySchedule[0]
+}
+
+function isUpperASelected(scheduleItem: WeeklyScheduleItem) {
+  return scheduleItem.workoutId === upperAWorkout.id
+}
+
 export function RecoveryFitApp() {
   const store = useRecoveryFitStore()
+  const todayDayId = useMemo(() => getWeekdayId(), [])
+  const [selectedDayId, setSelectedDayId] = useState<WeekdayId>(todayDayId)
   const [helpTopicId, setHelpTopicId] = useState<HelpTopicId | null>(null)
   const [reportOpen, setReportOpen] = useState(false)
 
+  const selectedScheduleItem = getScheduleItem(selectedDayId)
   const activeTitle =
     tabConfig.find((tab) => tab.id === store.activeView)?.title ?? "RecoveryFit"
   const activeExercise = upperAWorkout.exercises[store.activeExerciseIndex]
   const activeLog = activeExercise
     ? store.exerciseLogs[activeExercise.id]
     : undefined
-  const reportInput = useMemo<MarkdownReportInput>(
+  const reportInput = useMemo<ReportDraftInput>(
     () => ({
-      generatedAt: new Date(),
+      selectedScheduleItem,
       session: {
         activeExerciseIndex: store.activeExerciseIndex,
         activeView: store.activeView,
@@ -222,6 +199,7 @@ export function RecoveryFitApp() {
       workout: upperAWorkout,
     }),
     [
+      selectedScheduleItem,
       store.activeExerciseIndex,
       store.activeView,
       store.completedExerciseIds,
@@ -280,11 +258,16 @@ export function RecoveryFitApp() {
                 )}
                 dailyCheckin={store.dailyCheckin}
                 recommendation={recommendation}
+                selectedDayId={selectedDayId}
+                selectedScheduleItem={selectedScheduleItem}
                 sessionStatus={store.sessionStatus}
+                todayDayId={todayDayId}
                 onChangeCheckin={store.updateDailyCheckin}
+                onContinueSession={() => store.setActiveView("session")}
                 onOpenExport={() => setReportOpen(true)}
                 onOpenHelp={setHelpTopicId}
                 onResetSession={store.resetSession}
+                onSelectDay={setSelectedDayId}
                 onStartSession={handleStartSession}
               />
             ) : null}
@@ -297,6 +280,7 @@ export function RecoveryFitApp() {
                 warmupChecklist={store.warmupChecklist}
                 onChangeSet={store.updateSet}
                 onNextExercise={handleNextExercise}
+                onGoRecovery={() => store.setActiveView("recovery")}
                 onOpenHelp={setHelpTopicId}
                 onPreviousExercise={handlePreviousExercise}
                 onSaveExercise={handleSaveExercise}
@@ -394,28 +378,46 @@ function TodayView({
   completionCount,
   dailyCheckin,
   recommendation,
+  selectedDayId,
+  selectedScheduleItem,
   sessionStatus,
+  todayDayId,
   onChangeCheckin,
+  onContinueSession,
   onOpenExport,
   onOpenHelp,
   onResetSession,
+  onSelectDay,
   onStartSession,
 }: {
   completionCount: string
   dailyCheckin: ReturnType<typeof useRecoveryFitStore.getState>["dailyCheckin"]
   recommendation: ReturnType<typeof getReportRecommendation>
+  selectedDayId: WeekdayId
+  selectedScheduleItem: WeeklyScheduleItem
   sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  todayDayId: WeekdayId
   onChangeCheckin: ReturnType<typeof useRecoveryFitStore.getState>["updateDailyCheckin"]
+  onContinueSession: () => void
   onOpenExport: () => void
   onOpenHelp: (topic: HelpTopicId) => void
   onResetSession: () => void
+  onSelectDay: (dayId: WeekdayId) => void
   onStartSession: () => void
 }) {
   const tone = toneClasses[recommendation.tone]
   const completed = sessionStatus === "completed"
+  const hasUpperASession = sessionStatus !== "idle"
+  const selectedIsUpperA = isUpperASelected(selectedScheduleItem)
 
   return (
     <div className="flex flex-col gap-5">
+      <WeeklySelector
+        selectedDayId={selectedDayId}
+        todayDayId={todayDayId}
+        onSelectDay={onSelectDay}
+      />
+
       <button
         type="button"
         className={cn(
@@ -436,19 +438,33 @@ function TodayView({
         </span>
       </button>
 
-      {completed ? (
-        <CompletedDayCard
+      {selectedIsUpperA ? (
+        completed ? (
+          <CompletedDayCard
+            completionCount={completionCount}
+            onOpenExport={onOpenExport}
+            onResetSession={onResetSession}
+          />
+        ) : (
+          <WorkoutTodayCard
+            completionCount={completionCount}
+            sessionStatus={sessionStatus}
+            onStartSession={onStartSession}
+          />
+        )
+      ) : (
+        <PlannedActivityCard scheduleItem={selectedScheduleItem} />
+      )}
+
+      {!selectedIsUpperA && hasUpperASession ? (
+        <UpperASessionCard
           completionCount={completionCount}
+          sessionStatus={sessionStatus}
+          onContinueSession={onContinueSession}
           onOpenExport={onOpenExport}
           onResetSession={onResetSession}
         />
-      ) : (
-        <WorkoutTodayCard
-          completionCount={completionCount}
-          sessionStatus={sessionStatus}
-          onStartSession={onStartSession}
-        />
-      )}
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -519,6 +535,156 @@ function TodayView({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function WeeklySelector({
+  selectedDayId,
+  todayDayId,
+  onSelectDay,
+}: {
+  selectedDayId: WeekdayId
+  todayDayId: WeekdayId
+  onSelectDay: (dayId: WeekdayId) => void
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Agenda semanal</CardTitle>
+        <CardDescription>Escolha o dia para ver o plano local.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-7 gap-1.5">
+          {weeklySchedule.map((item) => {
+            const selected = item.id === selectedDayId
+            const isToday = item.id === todayDayId
+
+            return (
+              <button
+                aria-current={selected ? "date" : undefined}
+                className={cn(
+                  "flex min-h-14 min-w-0 flex-col items-center justify-center rounded-lg border px-1 text-[11px] font-semibold transition-colors",
+                  selected
+                    ? "border-zinc-900 bg-zinc-950 text-white"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                key={item.id}
+                type="button"
+                onClick={() => onSelectDay(item.id)}
+              >
+                <span>{item.shortLabel}</span>
+                {isToday ? (
+                  <span
+                    className={cn(
+                      "mt-1 rounded-full px-1.5 py-0.5 text-[9px] uppercase",
+                      selected
+                        ? "bg-white/15 text-white"
+                        : "bg-amber-100 text-amber-800"
+                    )}
+                  >
+                    hoje
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PlannedActivityCard({
+  scheduleItem,
+}: {
+  scheduleItem: WeeklyScheduleItem
+}) {
+  const plannedWorkout = scheduleItem.workoutId
+    ? plannedWorkouts[scheduleItem.workoutId]
+    : undefined
+  const isWorkout = scheduleItem.activityKind === "workout"
+  const isSwim = scheduleItem.activityKind === "swim"
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <Badge variant="secondary" className="mb-2 uppercase">
+            {isWorkout ? "Planejado" : isSwim ? "Natação" : "Recuperação"}
+          </Badge>
+          <CardTitle className="text-lg">{scheduleItem.title}</CardTitle>
+          <CardDescription>
+            {plannedWorkout?.focus ?? scheduleItem.description}
+          </CardDescription>
+        </div>
+        <CardAction>
+          {isWorkout ? (
+            <DumbbellIcon className="size-6 text-muted-foreground/60" />
+          ) : isSwim ? (
+            <ActivityIcon className="size-6 text-muted-foreground/60" />
+          ) : (
+            <ShieldCheckIcon className="size-6 text-muted-foreground/60" />
+          )}
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground wrap-break-word">
+          {isWorkout
+            ? "Este treino está tipado na agenda, mas o registro completo entra em uma próxima versão."
+            : scheduleItem.description}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function UpperASessionCard({
+  completionCount,
+  sessionStatus,
+  onContinueSession,
+  onOpenExport,
+  onResetSession,
+}: {
+  completionCount: string
+  sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  onContinueSession: () => void
+  onOpenExport: () => void
+  onResetSession: () => void
+}) {
+  const completed = sessionStatus === "completed"
+
+  return (
+    <Card className="bg-card/80">
+      <CardHeader>
+        <div>
+          <Badge variant="outline" className="mb-2">
+            Upper A
+          </Badge>
+          <CardTitle className="text-base">
+            Sessão Upper A {completed ? "concluída" : "em andamento"}
+          </CardTitle>
+          <CardDescription>
+            {completionCount} exercícios concluídos no diário local.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardFooter className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {completed ? (
+          <>
+            <Button onClick={onOpenExport}>
+              <FileTextIcon data-icon="inline-start" />
+              Exportar relatório
+            </Button>
+            <ResetSessionDialog onResetSession={onResetSession} />
+          </>
+        ) : (
+          <Button className="sm:col-span-2" onClick={onContinueSession}>
+            <PlayCircleIcon data-icon="inline-start" />
+            Continuar treino
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -669,6 +835,7 @@ function SessionView({
   exerciseLog,
   warmupChecklist,
   onChangeSet,
+  onGoRecovery,
   onNextExercise,
   onOpenHelp,
   onPreviousExercise,
@@ -682,6 +849,7 @@ function SessionView({
   exerciseLog: WorkoutExerciseLog | undefined
   warmupChecklist: Record<string, boolean>
   onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
+  onGoRecovery: () => void
   onNextExercise: () => void
   onOpenHelp: (topic: HelpTopicId) => void
   onPreviousExercise: () => void
@@ -802,7 +970,7 @@ function SessionView({
               Voltar
             </Button>
             {activeExerciseIndex === upperAWorkout.exercises.length - 1 ? (
-              <Button variant="outline" onClick={() => useRecoveryFitStore.getState().setActiveView("recovery")}>
+              <Button variant="outline" onClick={onGoRecovery}>
                 Recuperação
                 <ArrowRightIcon data-icon="inline-end" />
               </Button>
@@ -960,7 +1128,11 @@ function PainRegionSelector({
   onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
 }) {
   const setsWithPain =
-    exerciseLog?.sets.filter((set) => parseNumericDraft(set.painDuring) !== null) ??
+    exerciseLog?.sets.filter((set) => {
+      const pain = parseNumericDraft(set.painDuring)
+
+      return pain !== null && pain > 0
+    }) ??
     []
 
   if (setsWithPain.length === 0) {
@@ -1216,158 +1388,5 @@ function BottomNav({
         })}
       </div>
     </nav>
-  )
-}
-
-function HelpDrawer({
-  topic,
-  open,
-  onOpenChange,
-}: {
-  topic: HelpTopic | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="mx-auto w-full max-w-md">
-        <DrawerHeader className="text-left">
-          <DrawerTitle>{topic?.title ?? "Ajuda"}</DrawerTitle>
-          <DrawerDescription>{topic?.description}</DrawerDescription>
-        </DrawerHeader>
-        {topic ? (
-          <div className="flex max-h-[55vh] flex-col gap-4 overflow-y-auto px-4 pb-2 text-sm leading-relaxed">
-            {topic.sections.map((section, index) => (
-              <section className="flex flex-col gap-2" key={index}>
-                {section.title ? (
-                  <h3 className="font-semibold">{section.title}</h3>
-                ) : null}
-                {section.paragraphs?.map((paragraph) => (
-                  <p className="text-muted-foreground" key={paragraph}>
-                    {paragraph}
-                  </p>
-                ))}
-                {section.bullets ? (
-                  <ul className="flex list-disc flex-col gap-1 pl-5 text-muted-foreground">
-                    {section.bullets.map((bullet) => (
-                      <li key={bullet}>{bullet}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </section>
-            ))}
-          </div>
-        ) : null}
-        <DrawerFooter>
-          <DrawerClose asChild>
-            <Button variant="outline">Fechar</Button>
-          </DrawerClose>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
-  )
-}
-
-function ReportDrawer({
-  input,
-  open,
-  onOpenChange,
-}: {
-  input: MarkdownReportInput
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [copyState, setCopyState] = useState<CopyState>("idle")
-  const markdown = useMemo(() => generateMarkdownReport(input), [input])
-
-  useEffect(() => {
-    if (copyState === "manual") {
-      textareaRef.current?.focus()
-      textareaRef.current?.select()
-    }
-  }, [copyState])
-
-  function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) {
-      setCopyState("idle")
-    }
-
-    onOpenChange(nextOpen)
-  }
-
-  async function handleCopy() {
-    try {
-      const copied = await copyReportToClipboard(markdown)
-
-      if (copied) {
-        setCopyState("copied")
-        toast.success("Markdown copiado.")
-        return
-      }
-    } catch {
-      // The visible textarea below is the intentional manual fallback.
-    }
-
-    setCopyState("manual")
-    toast.warning("Não consegui copiar automaticamente. O texto foi selecionado.")
-  }
-
-  return (
-    <Drawer open={open} onOpenChange={handleOpenChange}>
-      <DrawerContent className="mx-auto w-full max-w-md">
-        <DrawerHeader className="text-left">
-          <DrawerTitle className="flex items-center gap-2">
-            <FileTextIcon className="size-4" />
-            Exportar relatório
-          </DrawerTitle>
-          <DrawerDescription>
-            Markdown gerado localmente com os dados atuais da sessão.
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="flex flex-col gap-3 px-4">
-          <div
-            className={cn(
-              "rounded-xl border p-3 text-xs leading-relaxed",
-              copyState === "manual"
-                ? "border-amber-200 bg-amber-50 text-amber-950"
-                : "border-border bg-muted text-muted-foreground"
-            )}
-          >
-            {copyState === "manual" ? (
-              <span>
-                Cópia automática indisponível. O texto abaixo está selecionado
-                para cópia manual.
-              </span>
-            ) : (
-              <span>
-                A cópia usa a Clipboard API. Se o navegador bloquear, o texto
-                fica selecionável aqui.
-              </span>
-            )}
-          </div>
-          <Textarea
-            ref={textareaRef}
-            aria-label="Relatório Markdown"
-            className="h-72 resize-none font-mono text-xs leading-relaxed"
-            readOnly
-            value={markdown}
-          />
-        </div>
-        <DrawerFooter>
-          <Button onClick={handleCopy}>
-            {copyState === "copied" ? (
-              <CheckCircle2Icon data-icon="inline-start" />
-            ) : (
-              <ClipboardIcon data-icon="inline-start" />
-            )}
-            {copyState === "copied" ? "Copiado" : "Copiar Markdown"}
-          </Button>
-          <DrawerClose asChild>
-            <Button variant="outline">Fechar</Button>
-          </DrawerClose>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
   )
 }

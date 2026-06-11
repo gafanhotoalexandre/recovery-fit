@@ -4,6 +4,17 @@ export type SessionStatus = "idle" | "active" | "completed"
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger"
 
+export type WeekdayId =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday"
+
+export type ScheduleActivityKind = "workout" | "swim" | "rest"
+
 export type PainRegionId =
   | "ombro_esquerdo"
   | "ombro_direito"
@@ -78,6 +89,23 @@ export type WorkoutPlan = {
   exercises: WorkoutExercise[]
 }
 
+export type PlannedWorkout = {
+  id: string
+  name: string
+  focus: string
+  status: "available" | "planned"
+}
+
+export type WeeklyScheduleItem = {
+  id: WeekdayId
+  shortLabel: string
+  label: string
+  activityKind: ScheduleActivityKind
+  title: string
+  description: string
+  workoutId?: string
+}
+
 export type RecoveryFitSessionState = {
   activeView: AppView
   sessionStatus: SessionStatus
@@ -119,6 +147,7 @@ export type NormalizedExerciseLog = {
 }
 
 export type MarkdownReportInput = {
+  selectedScheduleItem: WeeklyScheduleItem
   workout: WorkoutPlan
   session: RecoveryFitSessionState
   generatedAt: Date
