@@ -1,8 +1,8 @@
 # RecoveryFit
 
-POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.2.1 estabiliza a sessão local e adiciona agenda semanal sem backend.
+POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.2.2 estabiliza QA, segurança, documentação base e higiene técnica antes da v0.3.
 
-## Estado atual — v0.2.1
+## Estado Atual — v0.2.2
 
 Inclui:
 
@@ -15,13 +15,11 @@ Inclui:
 - Natação nas terças/quintas e descanso no domingo.
 - Checklist real de aquecimento para ombros, escápulas e hálux.
 - Registro de séries por exercício com carga, reps, RIR, dor e região opcional.
-- Navegação entre exercícios, com salvar/avançar/voltar.
 - Check-in simples do dia.
 - Recuperação pós-treino por ombro/hálux.
-- Estado concluído na tela Hoje, com exportação e reset confirmado.
 - Exportação Markdown com dados reais da sessão, mesmo incompleta.
-- Transições discretas por CSS/Tailwind, respeitando `prefers-reduced-motion`.
-- Preparação mobile básica: `theme-color`, safe-area e layout sem scroll horizontal.
+- Documentação base para agentes e contexto de domínio.
+- Favicon simples do projeto.
 
 Não inclui nesta fase:
 
@@ -67,13 +65,15 @@ Pontos principais:
 - `mock-data.ts`: agenda semanal, treinos planejados, treino Upper A, aquecimento, labels e ajuda contextual.
 - `lib/recovery-rules.ts`: regras puras de dor/recomendação.
 - `lib/export-report.ts`: relatório Markdown baseado no estado local atual.
-- `index.tsx`: UI da feature, drawers e fluxo de interação.
+- `components/`: drawers extraídos da feature quando isso melhora leitura sem criar arquitetura excessiva.
+- `AGENTS.md`: guia operacional para agentes.
+- `docs/RECOVERYFIT_CONTEXT.md`: contexto estável de domínio.
 
 A store persiste somente dados de sessão, check-in e recuperação. Drawers, toasts, avisos transitórios e estado visual ficam fora do storage.
 
-## Supabase depois
+## Supabase Depois
 
-O projeto Supabase fica para fase futura. Quando a fase de backend começar, usar:
+Supabase fica para fase futura. Quando a fase de backend começar, usar:
 
 ```bash
 npm install @supabase/supabase-js
@@ -93,7 +93,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<SUPABASE_PUBLISHABLE_KEY>
 SUPABASE_PROJECT_REF=<SUPABASE_PROJECT_REF>
 ```
 
-## Limite clínico
+Não registre valores reais no README, docs, código ou histórico novo.
+
+## Limite Clínico
 
 As regras da POC servem como apoio ao registro e à organização da progressão. Elas não substituem avaliação profissional, diagnóstico ou orientação médica.
 

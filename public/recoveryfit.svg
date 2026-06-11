@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RecoveryFit">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#0c0a09"/>
+    </linearGradient>
+    
+    <linearGradient id="accent" x1="24" y1="46" x2="48" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#10b981"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+
+  <path
+    d="M 18 46 V 18 h 10 a 9 9 0 0 1 0 18 h -10"
+    fill="none"
+    stroke="#fafaf9"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path
+    d="M 24 36 l 8 10 l 18 -24"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
