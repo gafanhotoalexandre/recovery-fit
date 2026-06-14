@@ -181,9 +181,12 @@ export function generateMarkdownReport(input: MarkdownReportInput) {
     ? `${completedExerciseCount}/${sessionWorkout.exercises.length}`
     : "não iniciado"
   const registeredWorkoutName = sessionWorkout?.name ?? "não iniciado"
+  const reportTitle = sessionWorkout
+    ? sessionWorkout.name
+    : "sem treino registrado"
 
   return [
-    `# Relatório RecoveryFit — ${sessionWorkout?.name ?? selectedScheduleItem.title}`,
+    `# Relatório RecoveryFit — ${reportTitle}`,
     "",
     `Gerado em: ${formatDateTime(input.generatedAt)}`,
     "",

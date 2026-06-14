@@ -14,6 +14,8 @@ RecoveryFit is a local-first training and recovery tracker for conservative prog
 
 In v0.3, Upper A, Lower A, Upper B, and Lower B have complete local session flows. Natação and Descanso remain agenda activities without technical session recording.
 
+v0.3.1 is a UX and componentization polish release. It does not change clinical rules, workout modeling, local-only storage, or the single active session model. The main change is clearer mobile recording with per-set mini-cards, clearer session state messaging, and explicit export behavior when no workout session is registered.
+
 ## Regra De Dor
 
 - Dor 0-3/10 durante o exercício: tolerável, desde que não piore depois.

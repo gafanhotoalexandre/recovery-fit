@@ -1,12 +1,17 @@
 # RecoveryFit
 
-POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.3 completa os treinos locais da agenda semanal sem backend.
+POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.3.1 mantém o app local e mock-backed, com polimento de uso real no celular.
 
-## Estado Atual — v0.3
+## Estado Atual — v0.3.1
 
 Inclui:
 
 - Fluxo local `Hoje -> Treino -> Recuperação`.
+- UX mobile refinada para registro de séries durante o treino, com mini-cards tocáveis por série.
+- Clareza melhor quando existe sessão ativa ou concluída de outro treino.
+- Exportação Markdown explícita quando ainda não há treino registrado.
+- Identidade visual moderada baseada no `public/recoveryfit.svg`.
+- Componentização leve das telas de Hoje, Treino, Recuperação, agenda e cards de sessão.
 - Store Zustand com persistência seletiva em `localStorage`.
 - Validação com Zod para drafts e dados normalizados.
 - Agenda semanal local tipada, com destaque do dia atual e seleção manual de dia.
@@ -19,6 +24,12 @@ Inclui:
 - Exportação Markdown com dados reais da sessão, mesmo incompleta.
 - Documentação base para agentes e contexto de domínio.
 - Favicon simples do projeto.
+
+Privacidade local:
+
+- Dados de sessão, check-in e recuperação ficam no `localStorage` do navegador.
+- Não há backend, Auth, Supabase, sincronização remota ou `.env` nesta versão.
+- O relatório Markdown é gerado no cliente a partir do estado local atual.
 
 Não inclui nesta fase:
 
@@ -101,6 +112,7 @@ As regras da POC servem como apoio ao registro e à organização da progressão
 ## Roadmap
 
 - v0.3: múltiplos treinos locais Upper/Lower completos na agenda semanal.
+- v0.3.1: polimento mobile, clareza de sessão, exportação sem sessão explícita e componentização leve.
 - v0.4: React Router em Data Mode, rotas reais e layouts.
 - v0.5: Supabase Auth, schema, RLS, profiles e persistência real.
 - v0.6: convites, sincronização de sessões e histórico semanal.

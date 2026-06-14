@@ -69,6 +69,8 @@ export function ReportDrawer({
     [input, open]
   )
   const markdown = copiedMarkdown ?? previewMarkdown
+  const hasRegisteredWorkout =
+    input.session.sessionStatus !== "idle" && input.sessionWorkout !== null
 
   useEffect(() => {
     if (copyState === "manual") {
@@ -119,10 +121,18 @@ export function ReportDrawer({
             Exportar relatório
           </DrawerTitle>
           <DrawerDescription>
-            Markdown gerado localmente com os dados atuais da sessão.
+            {hasRegisteredWorkout
+              ? "Markdown gerado localmente com os dados reais da sessão."
+              : "Markdown local sem treino registrado nesta sessão."}
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-3 px-4">
+          {!hasRegisteredWorkout ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+              Não há treino registrado. O relatório exporta somente check-in e
+              recuperação atuais, sem inferir treino pelo dia selecionado.
+            </div>
+          ) : null}
           <div
             className={cn(
               "rounded-xl border p-3 text-xs leading-relaxed",
