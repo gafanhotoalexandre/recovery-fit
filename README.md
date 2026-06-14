@@ -1,45 +1,40 @@
 # RecoveryFit
 
-POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.3.1 mantém o app local e mock-backed, com polimento de uso real no celular.
+RecoveryFit is a mobile-first local training diary for conservative strength progression around shoulder and hallux sensitivity. It helps record sets, pain, recovery signals, and a Markdown report without a backend.
 
-## Estado Atual — v0.3.1
+Current version: `v0.3.2` documentation, security, and release readiness polish.
 
-Inclui:
+Interface language: Portuguese (Brazil). README written in English for portfolio visibility.
 
-- Fluxo local `Hoje -> Treino -> Recuperação`.
-- UX mobile refinada para registro de séries durante o treino, com mini-cards tocáveis por série.
-- Clareza melhor quando existe sessão ativa ou concluída de outro treino.
-- Exportação Markdown explícita quando ainda não há treino registrado.
-- Identidade visual moderada baseada no `public/recoveryfit.svg`.
-- Componentização leve das telas de Hoje, Treino, Recuperação, agenda e cards de sessão.
-- Store Zustand com persistência seletiva em `localStorage`.
-- Validação com Zod para drafts e dados normalizados.
-- Agenda semanal local tipada, com destaque do dia atual e seleção manual de dia.
-- Treinos `Upper A`, `Lower A`, `Upper B` e `Lower B` completos no fluxo local.
-- Natação nas terças/quintas e descanso no domingo.
-- Checklist real de aquecimento para ombros, escápulas e hálux.
-- Registro de séries por exercício com carga, reps ou segundos, RIR, dor e região opcional.
-- Check-in simples do dia.
-- Recuperação pós-treino por ombro/hálux.
-- Exportação Markdown com dados reais da sessão, mesmo incompleta.
-- Documentação base para agentes e contexto de domínio.
-- Favicon simples do projeto.
+## What It Does
 
-Privacidade local:
+- Local flow: `Hoje → Treino → Recuperação`.
+- Weekly local schedule with `Upper A`, `Lower A`, `Upper B`, and `Lower B`.
+- Per-set logging with load, reps or seconds, RIR, pain, and pain region.
+- Warmup checklist for shoulders, scapulae, and hallux.
+- Daily check-in and post-workout recovery notes.
+- Markdown export from the current local session.
+- Clear empty/export states when no workout session exists.
 
-- Dados de sessão, check-in e recuperação ficam no `localStorage` do navegador.
-- Não há backend, Auth, Supabase, sincronização remota ou `.env` nesta versão.
-- O relatório Markdown é gerado no cliente a partir do estado local atual.
+## Screenshots
 
-Não inclui nesta fase:
+No screenshots are committed yet. Recommended captures for portfolio use:
 
-- Supabase, Auth, RLS, migrations ou `.env`.
-- React Router.
-- TanStack Query.
-- React Hook Form.
-- IA integrada.
-- Gráficos.
-- Service worker ou PWA completo.
+- Mobile `360px`: Today screen with weekly selector.
+- Mobile `360px`: active workout with per-set mini-cards.
+- Mobile `450px`: recovery screen.
+- Desktop or tablet: centered app shell.
+
+Use screenshots only after visually reviewing them. Avoid committing quick temporary captures.
+
+## Privacy
+
+RecoveryFit v0.3.2 is local-only:
+
+- Session, check-in, and recovery data stay in browser `localStorage`.
+- There is no backend, Auth, Supabase, sync, analytics, or external submission.
+- Markdown export is generated in the browser from current local state.
+- No `.env` values are required for this version.
 
 ## Stack
 
@@ -64,58 +59,85 @@ npm run build
 npm run preview
 ```
 
-## Arquitetura
-
-A aplicação fica fina em `src/App.tsx` e delega a experiência para `src/features/recovery-fit`.
-
-Pontos principais:
-
-- `store.ts`: estado local da sessão com Zustand `persist`, `version`, `migrate` e `partialize`.
-- `schemas.ts`: validação Zod para drafts e dados normalizados.
-- `mock-data.ts`: agenda semanal, coleção local de treinos, aquecimento, labels e ajuda contextual.
-- `lib/recovery-rules.ts`: regras puras de dor/recomendação.
-- `lib/export-report.ts`: relatório Markdown baseado no estado local atual.
-- `components/`: drawers extraídos da feature quando isso melhora leitura sem criar arquitetura excessiva.
-- `AGENTS.md`: guia operacional para agentes.
-- `docs/RECOVERYFIT_CONTEXT.md`: contexto estável de domínio.
-
-A store persiste somente dados de sessão, check-in e recuperação. Drawers, toasts, avisos transitórios e estado visual ficam fora do storage.
-
-## Supabase Depois
-
-Supabase fica para fase futura. Quando a fase de backend começar, usar:
+Required checks before release:
 
 ```bash
-npm install @supabase/supabase-js
+npm run typecheck
+npm run lint
+npm run build
 ```
 
-E, se o CLI for necessário sem instalação global:
+## Deploy
 
-```bash
-npx supabase ...
-```
+Simple Vercel deploy settings:
 
-Variáveis previstas:
+- Framework preset: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variables: none for v0.3.2
 
-```env
-VITE_SUPABASE_URL=<SUPABASE_PROJECT_URL>
-VITE_SUPABASE_PUBLISHABLE_KEY=<SUPABASE_PUBLISHABLE_KEY>
-SUPABASE_PROJECT_REF=<SUPABASE_PROJECT_REF>
-```
+Vercel's Vite documentation confirms that Vite builds optimized static assets for production and can be deployed from a Vite project root. Environment variables are optional; Vercel system variables are available automatically, and Vite-exposed variables use the `VITE_` prefix.
 
-Não registre valores reais no README, docs, código ou histórico novo.
+## Dependency Notes
 
-## Limite Clínico
+Directly used by the app:
 
-As regras da POC servem como apoio ao registro e à organização da progressão. Elas não substituem avaliação profissional, diagnóstico ou orientação médica.
+- `react`, `react-dom`
+- `@vitejs/plugin-react`, `vite`, `typescript`
+- `tailwindcss`, `@tailwindcss/vite`, `tw-animate-css`
+- `@fontsource-variable/inter`
+- `lucide-react`
+- `sonner`
+- `zustand`
+- `zod`
+- `clsx`, `tailwind-merge`
+- `radix-ui`, `class-variance-authority`, `vaul`
+
+Kept because versioned shadcn/ui components import them:
+
+- `recharts` via `src/components/ui/chart.tsx`
+- `react-day-picker` via `src/components/ui/calendar.tsx`
+- `input-otp` via `src/components/ui/input-otp.tsx`
+
+Do not remove dependencies aggressively in v0.3.2. If cleanup is needed later, remove unused shadcn components and dependencies together, then run all required checks.
+
+## Bundle Note
+
+The production build currently emits Vite's chunk warning for a JavaScript asset above 500 kB minified. This is accepted for the current portfolio/local-first phase because the gzipped bundle is much smaller and the app has no route boundaries yet.
+
+Revisit bundle reduction when the project adds real routing, removes unused shadcn components, or needs stricter performance budgets.
+
+## Architecture
+
+The app shell in `src/App.tsx` delegates the RecoveryFit experience to `src/features/recovery-fit`.
+
+Key areas:
+
+- `store.ts`: local session state with Zustand `persist`.
+- `schemas.ts`: Zod validation for drafts and normalized data.
+- `mock-data.ts`: local schedule, workouts, warmup, labels, and help content.
+- `lib/recovery-rules.ts`: pure pain/recovery recommendation rules.
+- `lib/export-report.ts`: Markdown export from current local state.
+- `components/`: feature views, drawers, cards, and focused UI pieces.
+
+## Limits
+
+RecoveryFit is not medical advice and does not replace professional evaluation.
+
+Not included in this phase:
+
+- Supabase, Auth, RLS, migrations, or `.env`.
+- React Router.
+- Local session history.
+- Charts.
+- PWA/service worker.
+- Backend sync.
 
 ## Roadmap
 
-- v0.3: múltiplos treinos locais Upper/Lower completos na agenda semanal.
-- v0.3.1: polimento mobile, clareza de sessão, exportação sem sessão explícita e componentização leve.
-- v0.4: React Router em Data Mode, rotas reais e layouts.
-- v0.5: Supabase Auth, schema, RLS, profiles e persistência real.
-- v0.6: convites, sincronização de sessões e histórico semanal.
-- v0.7: regras de progressão mais completas, observação por exercício e alertas de dor 24h.
-- v0.8+: MealGuard leve, dashboard semanal, PWA completo, templates editáveis e exportação CSV.
-- MVP 1.0: app autenticado, treino real persistido, dor/check-ins, recomendações conservadoras, exportação Markdown/CSV e fluxo mobile confiável.
+- v0.3: multiple local Upper/Lower workouts in the weekly schedule.
+- v0.3.1: mobile session UX, clearer session states, export clarity, light componentization.
+- v0.3.2: documentation, privacy, security, release checklist, and deploy readiness.
+- v0.4: local session history and, if justified, React Router in Data Mode.
+- v0.5+: Supabase/Auth/RLS only after the local model is mature.
+- MVP 1.0: reliable authenticated app with persisted sessions, recovery signals, conservative recommendations, and export workflows.
