@@ -69,7 +69,7 @@ import {
   painRegionLabels,
   plannedWorkouts,
   recoveryRegionLabels,
-  upperAWorkout,
+  workoutsById,
   weeklySchedule,
 } from "./mock-data"
 import { getReportRecommendation } from "./lib/export-report"
@@ -85,6 +85,8 @@ import type {
   WeeklyScheduleItem,
   WorkoutExercise,
   WorkoutExerciseLog,
+  WorkoutId,
+  WorkoutPlan,
   WorkoutSetDraft,
 } from "./types"
 
@@ -164,8 +166,17 @@ function getScheduleItem(dayId: WeekdayId) {
   return weeklySchedule.find((item) => item.id === dayId) ?? weeklySchedule[0]
 }
 
-function isUpperASelected(scheduleItem: WeeklyScheduleItem) {
-  return scheduleItem.workoutId === upperAWorkout.id
+function getCompletedExerciseCount(
+  workout: WorkoutPlan,
+  completedExerciseIds: string[]
+) {
+  const exerciseIds = new Set(workout.exercises.map((exercise) => exercise.id))
+
+  return completedExerciseIds.filter((id) => exerciseIds.has(id)).length
+}
+
+function formatPlannedPrescription(exercise: WorkoutExercise) {
+  return `${exercise.plannedSetsLabel ?? exercise.plannedSets}×${exercise.repRange}`
 }
 
 export function RecoveryFitApp() {
@@ -176,9 +187,14 @@ export function RecoveryFitApp() {
   const [reportOpen, setReportOpen] = useState(false)
 
   const selectedScheduleItem = getScheduleItem(selectedDayId)
+  const selectedWorkout = selectedScheduleItem.workoutId
+    ? workoutsById[selectedScheduleItem.workoutId]
+    : null
+  const sessionWorkout =
+    store.sessionStatus === "idle" ? null : workoutsById[store.workoutId]
   const activeTitle =
     tabConfig.find((tab) => tab.id === store.activeView)?.title ?? "RecoveryFit"
-  const activeExercise = upperAWorkout.exercises[store.activeExerciseIndex]
+  const activeExercise = sessionWorkout?.exercises[store.activeExerciseIndex]
   const activeLog = activeExercise
     ? store.exerciseLogs[activeExercise.id]
     : undefined
@@ -196,10 +212,11 @@ export function RecoveryFitApp() {
         warmupChecklist: store.warmupChecklist,
         workoutId: store.workoutId,
       },
-      workout: upperAWorkout,
+      sessionWorkout,
     }),
     [
       selectedScheduleItem,
+      sessionWorkout,
       store.activeExerciseIndex,
       store.activeView,
       store.completedExerciseIds,
@@ -214,8 +231,18 @@ export function RecoveryFitApp() {
   const recommendation = getReportRecommendation(reportInput)
   const helpTopic = helpTopicId ? helpTopics[helpTopicId] : null
 
-  function handleStartSession() {
-    store.startSession()
+  function handleSelectDay(dayId: WeekdayId) {
+    const nextScheduleItem = getScheduleItem(dayId)
+
+    setSelectedDayId(dayId)
+
+    if (store.sessionStatus === "idle" && nextScheduleItem.workoutId) {
+      store.setBaseWorkout(nextScheduleItem.workoutId)
+    }
+  }
+
+  function handleStartSession(workoutId: WorkoutId) {
+    store.startSession(workoutId)
     toast.success("Treino iniciado.")
   }
 
@@ -237,8 +264,14 @@ export function RecoveryFitApp() {
   }
 
   function handleFinishDiary() {
+    const wasActive = store.sessionStatus === "active"
+
     store.finishDiary()
-    toast.success("Diário salvo. Relatório disponível na tela Hoje.")
+    toast.success(
+      wasActive
+        ? "Diário salvo. Relatório disponível na tela Hoje."
+        : "Recuperação salva."
+    )
   }
 
   return (
@@ -252,31 +285,31 @@ export function RecoveryFitApp() {
           <ViewTransition view={store.activeView}>
             {store.activeView === "today" ? (
               <TodayView
-                completionCount={formatCompletionCount(
-                  store.completedExerciseIds.length,
-                  upperAWorkout.exercises.length
-                )}
+                completedExerciseIds={store.completedExerciseIds}
                 dailyCheckin={store.dailyCheckin}
                 recommendation={recommendation}
                 selectedDayId={selectedDayId}
                 selectedScheduleItem={selectedScheduleItem}
+                selectedWorkout={selectedWorkout}
                 sessionStatus={store.sessionStatus}
+                sessionWorkout={sessionWorkout}
                 todayDayId={todayDayId}
                 onChangeCheckin={store.updateDailyCheckin}
                 onContinueSession={() => store.setActiveView("session")}
                 onOpenExport={() => setReportOpen(true)}
                 onOpenHelp={setHelpTopicId}
                 onResetSession={store.resetSession}
-                onSelectDay={setSelectedDayId}
+                onSelectDay={handleSelectDay}
                 onStartSession={handleStartSession}
               />
             ) : null}
-            {store.activeView === "session" && activeExercise ? (
+            {store.activeView === "session" && activeExercise && sessionWorkout ? (
               <SessionView
                 activeExercise={activeExercise}
                 activeExerciseIndex={store.activeExerciseIndex}
                 completedExerciseIds={store.completedExerciseIds}
                 exerciseLog={activeLog}
+                workout={sessionWorkout}
                 warmupChecklist={store.warmupChecklist}
                 onChangeSet={store.updateSet}
                 onNextExercise={handleNextExercise}
@@ -292,6 +325,7 @@ export function RecoveryFitApp() {
               <RecoveryView
                 recovery={store.recovery}
                 recommendation={recommendation}
+                sessionStatus={store.sessionStatus}
                 onChangeRecovery={store.updateRecovery}
                 onFinishDiary={handleFinishDiary}
                 onOpenHelp={setHelpTopicId}
@@ -375,12 +409,14 @@ function AppHeader({
 }
 
 function TodayView({
-  completionCount,
+  completedExerciseIds,
   dailyCheckin,
   recommendation,
   selectedDayId,
   selectedScheduleItem,
+  selectedWorkout,
   sessionStatus,
+  sessionWorkout,
   todayDayId,
   onChangeCheckin,
   onContinueSession,
@@ -390,25 +426,41 @@ function TodayView({
   onSelectDay,
   onStartSession,
 }: {
-  completionCount: string
+  completedExerciseIds: string[]
   dailyCheckin: ReturnType<typeof useRecoveryFitStore.getState>["dailyCheckin"]
   recommendation: ReturnType<typeof getReportRecommendation>
   selectedDayId: WeekdayId
   selectedScheduleItem: WeeklyScheduleItem
+  selectedWorkout: WorkoutPlan | null
   sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  sessionWorkout: WorkoutPlan | null
   todayDayId: WeekdayId
   onChangeCheckin: ReturnType<typeof useRecoveryFitStore.getState>["updateDailyCheckin"]
   onContinueSession: () => void
   onOpenExport: () => void
   onOpenHelp: (topic: HelpTopicId) => void
-  onResetSession: () => void
+  onResetSession: (nextWorkoutId?: WorkoutId) => void
   onSelectDay: (dayId: WeekdayId) => void
-  onStartSession: () => void
+  onStartSession: (workoutId: WorkoutId) => void
 }) {
   const tone = toneClasses[recommendation.tone]
-  const completed = sessionStatus === "completed"
-  const hasUpperASession = sessionStatus !== "idle"
-  const selectedIsUpperA = isUpperASelected(selectedScheduleItem)
+  const hasSession = sessionStatus !== "idle" && sessionWorkout !== null
+  const selectedMatchesSession =
+    hasSession && selectedWorkout?.id === sessionWorkout.id
+  const selectedCompletionCount = selectedWorkout
+    ? formatCompletionCount(
+        selectedMatchesSession
+          ? getCompletedExerciseCount(selectedWorkout, completedExerciseIds)
+          : 0,
+        selectedWorkout.exercises.length
+      )
+    : "0/0"
+  const sessionCompletionCount = sessionWorkout
+    ? formatCompletionCount(
+        getCompletedExerciseCount(sessionWorkout, completedExerciseIds),
+        sessionWorkout.exercises.length
+      )
+    : "0/0"
 
   return (
     <div className="flex flex-col gap-5">
@@ -438,31 +490,44 @@ function TodayView({
         </span>
       </button>
 
-      {selectedIsUpperA ? (
-        completed ? (
-          <CompletedDayCard
-            completionCount={completionCount}
+      {selectedWorkout ? (
+        hasSession && !selectedMatchesSession && sessionWorkout ? (
+          <SessionConflictCard
+            selectedWorkout={selectedWorkout}
+            sessionCompletionCount={sessionCompletionCount}
+            sessionStatus={sessionStatus}
+            sessionWorkout={sessionWorkout}
+            onContinueSession={onContinueSession}
             onOpenExport={onOpenExport}
-            onResetSession={onResetSession}
+            onResetSession={() => onResetSession(selectedWorkout.id)}
+          />
+        ) : sessionStatus === "completed" ? (
+          <CompletedDayCard
+            completionCount={selectedCompletionCount}
+            workout={selectedWorkout}
+            onOpenExport={onOpenExport}
+            onResetSession={() => onResetSession(selectedWorkout.id)}
           />
         ) : (
           <WorkoutTodayCard
-            completionCount={completionCount}
+            completionCount={selectedCompletionCount}
             sessionStatus={sessionStatus}
-            onStartSession={onStartSession}
+            workout={selectedWorkout}
+            onStartSession={() => onStartSession(selectedWorkout.id)}
           />
         )
       ) : (
         <PlannedActivityCard scheduleItem={selectedScheduleItem} />
       )}
 
-      {!selectedIsUpperA && hasUpperASession ? (
-        <UpperASessionCard
-          completionCount={completionCount}
+      {!selectedWorkout && hasSession && sessionWorkout ? (
+        <ExistingSessionCard
+          completionCount={sessionCompletionCount}
           sessionStatus={sessionStatus}
+          workout={sessionWorkout}
           onContinueSession={onContinueSession}
           onOpenExport={onOpenExport}
-          onResetSession={onResetSession}
+          onResetSession={() => onResetSession(sessionWorkout.id)}
         />
       ) : null}
 
@@ -638,15 +703,17 @@ function PlannedActivityCard({
   )
 }
 
-function UpperASessionCard({
+function ExistingSessionCard({
   completionCount,
   sessionStatus,
+  workout,
   onContinueSession,
   onOpenExport,
   onResetSession,
 }: {
   completionCount: string
   sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  workout: WorkoutPlan
   onContinueSession: () => void
   onOpenExport: () => void
   onResetSession: () => void
@@ -658,10 +725,10 @@ function UpperASessionCard({
       <CardHeader>
         <div>
           <Badge variant="outline" className="mb-2">
-            Upper A
+            {workout.name}
           </Badge>
           <CardTitle className="text-base">
-            Sessão Upper A {completed ? "concluída" : "em andamento"}
+            Sessão {completed ? "concluída" : "em andamento"}
           </CardTitle>
           <CardDescription>
             {completionCount} exercícios concluídos no diário local.
@@ -678,11 +745,75 @@ function UpperASessionCard({
             <ResetSessionDialog onResetSession={onResetSession} />
           </>
         ) : (
-          <Button className="sm:col-span-2" onClick={onContinueSession}>
+          <>
+            <Button onClick={onContinueSession}>
+              <PlayCircleIcon data-icon="inline-start" />
+              Continuar treino
+            </Button>
+            <ResetSessionDialog onResetSession={onResetSession} />
+          </>
+        )}
+      </CardFooter>
+    </Card>
+  )
+}
+
+function SessionConflictCard({
+  selectedWorkout,
+  sessionCompletionCount,
+  sessionStatus,
+  sessionWorkout,
+  onContinueSession,
+  onOpenExport,
+  onResetSession,
+}: {
+  selectedWorkout: WorkoutPlan
+  sessionCompletionCount: string
+  sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  sessionWorkout: WorkoutPlan
+  onContinueSession: () => void
+  onOpenExport: () => void
+  onResetSession: () => void
+}) {
+  const completed = sessionStatus === "completed"
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <Badge variant="secondary" className="mb-2 uppercase">
+            Sessão existente
+          </Badge>
+          <CardTitle className="text-lg">{selectedWorkout.name}</CardTitle>
+          <CardDescription>
+            Já existe uma sessão {completed ? "concluída" : "em andamento"} de{" "}
+            {sessionWorkout.name}. Para iniciar {selectedWorkout.name}, comece um
+            novo diário.
+          </CardDescription>
+        </div>
+        <CardAction>
+          <DumbbellIcon className="size-6 text-muted-foreground/60" />
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground wrap-break-word">
+          Sessão atual: {sessionWorkout.name} · {sessionCompletionCount} exercícios
+          concluídos. Seus dados locais serão preservados até reset explícito.
+        </p>
+      </CardContent>
+      <CardFooter className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {completed ? (
+          <Button onClick={onOpenExport}>
+            <FileTextIcon data-icon="inline-start" />
+            Exportar relatório
+          </Button>
+        ) : (
+          <Button onClick={onContinueSession}>
             <PlayCircleIcon data-icon="inline-start" />
             Continuar treino
           </Button>
         )}
+        <ResetSessionDialog onResetSession={onResetSession} />
       </CardFooter>
     </Card>
   )
@@ -691,10 +822,12 @@ function UpperASessionCard({
 function WorkoutTodayCard({
   completionCount,
   sessionStatus,
+  workout,
   onStartSession,
 }: {
   completionCount: string
   sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
+  workout: WorkoutPlan
   onStartSession: () => void
 }) {
   return (
@@ -704,9 +837,9 @@ function WorkoutTodayCard({
           <Badge variant="secondary" className="mb-2 uppercase">
             {sessionStatus === "active" ? "Em andamento" : "Aguardando"}
           </Badge>
-          <CardTitle className="text-lg">{upperAWorkout.name}</CardTitle>
+          <CardTitle className="text-lg">{workout.name}</CardTitle>
           <CardDescription>
-            {upperAWorkout.focus} — {upperAWorkout.exercises.length} exercícios
+            {workout.focus} — {workout.exercises.length} exercícios
           </CardDescription>
         </div>
         <CardAction>
@@ -731,10 +864,12 @@ function WorkoutTodayCard({
 
 function CompletedDayCard({
   completionCount,
+  workout,
   onOpenExport,
   onResetSession,
 }: {
   completionCount: string
+  workout: WorkoutPlan
   onOpenExport: () => void
   onResetSession: () => void
 }) {
@@ -745,7 +880,7 @@ function CompletedDayCard({
           <Badge className="mb-2 bg-emerald-100 text-emerald-800">
             Diário concluído
           </Badge>
-          <CardTitle className="text-lg">Treino salvo localmente</CardTitle>
+          <CardTitle className="text-lg">{workout.name} salvo localmente</CardTitle>
           <CardDescription>
             {completionCount} exercícios concluídos. O relatório pode ser
             exportado mesmo com campos incompletos.
@@ -833,6 +968,7 @@ function SessionView({
   activeExerciseIndex,
   completedExerciseIds,
   exerciseLog,
+  workout,
   warmupChecklist,
   onChangeSet,
   onGoRecovery,
@@ -847,6 +983,7 @@ function SessionView({
   activeExerciseIndex: number
   completedExerciseIds: string[]
   exerciseLog: WorkoutExerciseLog | undefined
+  workout: WorkoutPlan
   warmupChecklist: Record<string, boolean>
   onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
   onGoRecovery: () => void
@@ -859,13 +996,15 @@ function SessionView({
 }) {
   const completed = completedExerciseIds.includes(activeExercise.id)
   const warmupDoneCount = Object.values(warmupChecklist).filter(Boolean).length
-  const warmupIncomplete = warmupDoneCount < upperAWorkout.warmupItems.length
+  const warmupIncomplete = warmupDoneCount < workout.warmupItems.length
   const incompleteExercise = isExerciseIncomplete(exerciseLog)
+  const volumeLabel = activeExercise.trackingUnit === "seconds" ? "Seg" : "Reps"
 
   return (
     <div className="flex flex-col gap-5">
       <WarmupChecklist
         checklist={warmupChecklist}
+        workout={workout}
         onOpenHelp={onOpenHelp}
         onToggleItem={onToggleWarmupItem}
       />
@@ -881,11 +1020,11 @@ function SessionView({
         <CardHeader className="border-b">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {activeExercise.order} de {upperAWorkout.exercises.length}
+              {activeExercise.order} de {workout.exercises.length}
             </p>
             <CardTitle className="text-lg">{activeExercise.name}</CardTitle>
             <CardDescription>
-              {activeExercise.plannedSets}×{activeExercise.repRange} · alvo RIR{" "}
+              {formatPlannedPrescription(activeExercise)} · alvo RIR{" "}
               {activeExercise.targetRir}
             </CardDescription>
           </div>
@@ -905,7 +1044,7 @@ function SessionView({
           <div className="grid grid-cols-[1.75rem_minmax(3.2rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5 px-1 text-[10px] font-semibold uppercase text-muted-foreground">
             <span>Série</span>
             <span className="text-center">Kg</span>
-            <span className="text-center">Reps</span>
+            <span className="text-center">{volumeLabel}</span>
             <span className="text-center">RIR</span>
             <button
               className="inline-flex items-center justify-center gap-1 text-rose-500"
@@ -922,6 +1061,7 @@ function SessionView({
               exerciseId={activeExercise.id}
               key={set.id}
               set={set}
+              trackingUnit={activeExercise.trackingUnit}
               onChangeSet={onChangeSet}
             />
           ))}
@@ -969,7 +1109,7 @@ function SessionView({
               <ArrowLeftIcon data-icon="inline-start" />
               Voltar
             </Button>
-            {activeExerciseIndex === upperAWorkout.exercises.length - 1 ? (
+            {activeExerciseIndex === workout.exercises.length - 1 ? (
               <Button variant="outline" onClick={onGoRecovery}>
                 Recuperação
                 <ArrowRightIcon data-icon="inline-end" />
@@ -984,17 +1124,22 @@ function SessionView({
         </CardFooter>
       </Card>
 
-      <ExerciseProgress completedExerciseIds={completedExerciseIds} />
+      <ExerciseProgress
+        completedExerciseIds={completedExerciseIds}
+        workout={workout}
+      />
     </div>
   )
 }
 
 function WarmupChecklist({
   checklist,
+  workout,
   onOpenHelp,
   onToggleItem,
 }: {
   checklist: Record<string, boolean>
+  workout: WorkoutPlan
   onOpenHelp: (topic: HelpTopicId) => void
   onToggleItem: (itemId: string) => void
 }) {
@@ -1006,7 +1151,7 @@ function WarmupChecklist({
         <div>
           <CardTitle className="text-white">Aquecimento obrigatório</CardTitle>
           <CardDescription className="text-zinc-400">
-            {doneCount}/{upperAWorkout.warmupItems.length} itens feitos
+            {doneCount}/{workout.warmupItems.length} itens feitos
           </CardDescription>
         </div>
         <CardAction>
@@ -1022,7 +1167,7 @@ function WarmupChecklist({
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {upperAWorkout.warmupItems.map((item) => (
+        {workout.warmupItems.map((item) => (
           <label
             className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm"
             key={item.id}
@@ -1046,12 +1191,16 @@ function WarmupChecklist({
 function WorkoutSetRow({
   exerciseId,
   set,
+  trackingUnit,
   onChangeSet,
 }: {
   exerciseId: string
   set: WorkoutSetDraft
+  trackingUnit: WorkoutExercise["trackingUnit"]
   onChangeSet: ReturnType<typeof useRecoveryFitStore.getState>["updateSet"]
 }) {
+  const volumeLabel = trackingUnit === "seconds" ? "Tempo da" : "Repetições da"
+
   return (
     <div className="grid grid-cols-[1.75rem_minmax(3.2rem,1fr)_minmax(3rem,0.85fr)_minmax(3rem,0.85fr)_minmax(3.2rem,0.9fr)] items-center gap-1.5">
       <div className="grid size-7 place-items-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
@@ -1070,7 +1219,7 @@ function WorkoutSetRow({
         }
       />
       <Input
-        aria-label={`Repetições da série ${set.setNumber}`}
+        aria-label={`${volumeLabel} série ${set.setNumber}`}
         className="h-11 px-1 text-center font-semibold"
         inputMode="numeric"
         min={1}
@@ -1182,19 +1331,22 @@ function PainRegionSelector({
 
 function ExerciseProgress({
   completedExerciseIds,
+  workout,
 }: {
   completedExerciseIds: string[]
+  workout: WorkoutPlan
 }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Exercícios do Upper A</CardTitle>
+        <CardTitle className="text-base">Exercícios do {workout.name}</CardTitle>
         <CardDescription>
-          {completedExerciseIds.length}/{upperAWorkout.exercises.length} salvos
+          {getCompletedExerciseCount(workout, completedExerciseIds)}/
+          {workout.exercises.length} salvos
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {upperAWorkout.exercises.map((exercise) => {
+        {workout.exercises.map((exercise) => {
           const completed = completedExerciseIds.includes(exercise.id)
 
           return (
@@ -1204,7 +1356,7 @@ function ExerciseProgress({
             >
               <span className="min-w-0 truncate">{exercise.name}</span>
               <Badge variant={completed ? "default" : "outline"}>
-                {completed ? "Salvo" : `${exercise.plannedSets}×${exercise.repRange}`}
+                {completed ? "Salvo" : formatPlannedPrescription(exercise)}
               </Badge>
             </div>
           )
@@ -1217,17 +1369,21 @@ function ExerciseProgress({
 function RecoveryView({
   recovery,
   recommendation,
+  sessionStatus,
   onChangeRecovery,
   onFinishDiary,
   onOpenHelp,
 }: {
   recovery: ReturnType<typeof useRecoveryFitStore.getState>["recovery"]
   recommendation: ReturnType<typeof getReportRecommendation>
+  sessionStatus: ReturnType<typeof useRecoveryFitStore.getState>["sessionStatus"]
   onChangeRecovery: ReturnType<typeof useRecoveryFitStore.getState>["updateRecovery"]
   onFinishDiary: () => void
   onOpenHelp: (topic: HelpTopicId) => void
 }) {
   const tone = toneClasses[recommendation.tone]
+  const finishLabel =
+    sessionStatus === "idle" ? "Salvar recuperação" : "Salvar diário"
 
   return (
     <div className="flex flex-col gap-5">
@@ -1298,7 +1454,7 @@ function RecoveryView({
       </Card>
 
       <Button className="h-12 w-full" onClick={onFinishDiary}>
-        Salvar diário
+        {finishLabel}
       </Button>
     </div>
   )

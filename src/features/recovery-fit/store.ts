@@ -1,7 +1,12 @@
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 
-import { initialDailyCheckin, initialRecovery, upperAWorkout } from "./mock-data"
+import {
+  initialDailyCheckin,
+  initialRecovery,
+  upperAWorkout,
+  workoutsById,
+} from "./mock-data"
 import {
   exerciseNoteDraftSchema,
   recoveryNotesDraftSchema,
@@ -13,11 +18,14 @@ import type {
   DailyCheckinState,
   RecoveryFitSessionState,
   RecoveryState,
+  WorkoutExercise,
   WorkoutExerciseLog,
+  WorkoutId,
+  WorkoutPlan,
   WorkoutSetDraft,
 } from "./types"
 
-const STORAGE_VERSION = 2
+const STORAGE_VERSION = 3
 const STORAGE_NAME = "recovery-fit-session-v2"
 
 type PersistedRecoveryFitState = Omit<RecoveryFitSessionState, "activeView">
@@ -31,10 +39,11 @@ type RecoveryFitActions = {
   finishDiary: () => void
   nextExercise: () => void
   previousExercise: () => void
-  resetSession: () => void
+  resetSession: (nextWorkoutId?: WorkoutId) => void
   saveExercise: (exerciseId?: string) => void
   setActiveView: (view: AppView) => void
-  startSession: () => void
+  setBaseWorkout: (workoutId: WorkoutId) => void
+  startSession: (workoutId: WorkoutId) => void
   toggleWarmupItem: (itemId: string) => void
   updateDailyCheckin: (checkin: Partial<DailyCheckinState>) => void
   updateExerciseNote: (exerciseId: string, note: string) => void
@@ -67,46 +76,132 @@ function createSetDraft(setNumber: number): WorkoutSetDraft {
   }
 }
 
-function createExerciseLog(exerciseId: string): WorkoutExerciseLog {
-  const exercise = upperAWorkout.exercises.find((item) => item.id === exerciseId)
-  const plannedSets = exercise?.plannedSets ?? 1
-
+function createExerciseLog(exercise: WorkoutExercise): WorkoutExerciseLog {
   return {
-    exerciseId,
+    exerciseId: exercise.id,
     note: "",
-    sets: Array.from({ length: plannedSets }, (_, index) =>
+    sets: Array.from({ length: exercise.plannedSets }, (_, index) =>
       createSetDraft(index + 1)
     ),
   }
 }
 
-function createExerciseLogs() {
+function createExerciseLogs(workout: WorkoutPlan) {
   return Object.fromEntries(
-    upperAWorkout.exercises.map((exercise) => [
+    workout.exercises.map((exercise) => [
       exercise.id,
-      createExerciseLog(exercise.id),
+      createExerciseLog(exercise),
     ])
   )
 }
 
-function createWarmupChecklist() {
-  return Object.fromEntries(
-    upperAWorkout.warmupItems.map((item) => [item.id, false])
-  )
+function createWarmupChecklist(workout: WorkoutPlan) {
+  return Object.fromEntries(workout.warmupItems.map((item) => [item.id, false]))
 }
 
-function createInitialSessionState(): RecoveryFitSessionState {
+function isWorkoutId(value: unknown): value is WorkoutId {
+  return typeof value === "string" && value in workoutsById
+}
+
+function getWorkout(workoutId: WorkoutId): WorkoutPlan {
+  return workoutsById[workoutId] ?? upperAWorkout
+}
+
+function cloneDailyCheckin(): DailyCheckinState {
+  return { ...initialDailyCheckin }
+}
+
+function cloneRecovery(): RecoveryState {
+  return {
+    ...initialRecovery,
+    pain: { ...initialRecovery.pain },
+  }
+}
+
+function createInitialSessionState(
+  workoutId: WorkoutId = upperAWorkout.id
+): RecoveryFitSessionState {
   return {
     activeExerciseIndex: 0,
     activeView: "today",
     completedExerciseIds: [],
-    dailyCheckin: initialDailyCheckin,
-    exerciseLogs: createExerciseLogs(),
-    recovery: initialRecovery,
+    dailyCheckin: cloneDailyCheckin(),
+    exerciseLogs: {},
+    recovery: cloneRecovery(),
     sessionStatus: "idle",
-    warmupChecklist: createWarmupChecklist(),
-    workoutId: upperAWorkout.id,
+    warmupChecklist: {},
+    workoutId,
   }
+}
+
+function createActiveSessionState(workout: WorkoutPlan): RecoveryFitSessionState {
+  return {
+    ...createInitialSessionState(workout.id),
+    activeView: "session",
+    exerciseLogs: createExerciseLogs(workout),
+    sessionStatus: "active",
+    warmupChecklist: createWarmupChecklist(workout),
+  }
+}
+
+function clampExerciseIndex(index: number, workout: WorkoutPlan) {
+  return Math.min(Math.max(index, 0), workout.exercises.length - 1)
+}
+
+function currentExerciseId(state: RecoveryFitSessionState) {
+  const workout = getWorkout(state.workoutId)
+
+  return workout.exercises[state.activeExerciseIndex]?.id
+}
+
+function normalizePersistedExerciseLogs(
+  workout: WorkoutPlan,
+  candidateLogs: unknown
+) {
+  const baseLogs = createExerciseLogs(workout)
+
+  if (typeof candidateLogs !== "object" || candidateLogs === null) {
+    return baseLogs
+  }
+
+  const logs = candidateLogs as Record<string, unknown>
+
+  return Object.fromEntries(
+    workout.exercises.map((exercise) => {
+      const candidateLog = logs[exercise.id]
+      const parsed = workoutExerciseLogDraftSchema.safeParse(candidateLog)
+
+      return [
+        exercise.id,
+        parsed.success
+          ? { ...parsed.data, exerciseId: exercise.id }
+          : baseLogs[exercise.id],
+      ]
+    })
+  )
+}
+
+function normalizePersistedWarmupChecklist(
+  workout: WorkoutPlan,
+  candidateChecklist: unknown
+) {
+  const baseChecklist = createWarmupChecklist(workout)
+
+  if (typeof candidateChecklist !== "object" || candidateChecklist === null) {
+    return baseChecklist
+  }
+
+  const checklist = candidateChecklist as Record<string, unknown>
+  const normalizedChecklist: Record<string, boolean> = {}
+
+  for (const item of workout.warmupItems) {
+    const checked = checklist[item.id]
+
+    normalizedChecklist[item.id] =
+      typeof checked === "boolean" ? checked : Boolean(baseChecklist[item.id])
+  }
+
+  return normalizedChecklist
 }
 
 function normalizePersistedState(
@@ -117,41 +212,54 @@ function normalizePersistedState(
   }
 
   const candidate = persistedState as Partial<RecoveryFitSessionState>
-  const initialState = createInitialSessionState()
+  const workoutId = isWorkoutId(candidate.workoutId)
+    ? candidate.workoutId
+    : upperAWorkout.id
+  const workout = getWorkout(workoutId)
+  const sessionStatus = candidate.sessionStatus ?? "idle"
+  const initialState = createInitialSessionState(workout.id)
+  const nextDailyCheckin = {
+    ...initialState.dailyCheckin,
+    ...candidate.dailyCheckin,
+  }
+  const nextRecovery = {
+    ...initialState.recovery,
+    ...candidate.recovery,
+    pain: {
+      ...initialState.recovery.pain,
+      ...candidate.recovery?.pain,
+    },
+  }
+
+  if (sessionStatus === "idle") {
+    return {
+      ...initialState,
+      dailyCheckin: nextDailyCheckin,
+      recovery: nextRecovery,
+    }
+  }
+
+  const exerciseIds = new Set(workout.exercises.map((exercise) => exercise.id))
+  const activeExerciseIndex =
+    typeof candidate.activeExerciseIndex === "number"
+      ? clampExerciseIndex(candidate.activeExerciseIndex, workout)
+      : 0
 
   return {
     ...initialState,
-    ...candidate,
-    activeView: initialState.activeView,
-    dailyCheckin: {
-      ...initialState.dailyCheckin,
-      ...candidate.dailyCheckin,
-    },
-    exerciseLogs: {
-      ...initialState.exerciseLogs,
-      ...candidate.exerciseLogs,
-    },
-    recovery: {
-      ...initialState.recovery,
-      ...candidate.recovery,
-      pain: {
-        ...initialState.recovery.pain,
-        ...candidate.recovery?.pain,
-      },
-    },
-    warmupChecklist: {
-      ...initialState.warmupChecklist,
-      ...candidate.warmupChecklist,
-    },
+    activeExerciseIndex,
+    completedExerciseIds: (candidate.completedExerciseIds ?? []).filter((id) =>
+      exerciseIds.has(id)
+    ),
+    dailyCheckin: nextDailyCheckin,
+    exerciseLogs: normalizePersistedExerciseLogs(workout, candidate.exerciseLogs),
+    recovery: nextRecovery,
+    sessionStatus,
+    warmupChecklist: normalizePersistedWarmupChecklist(
+      workout,
+      candidate.warmupChecklist
+    ),
   }
-}
-
-function currentExerciseId(state: RecoveryFitSessionState) {
-  return upperAWorkout.exercises[state.activeExerciseIndex]?.id
-}
-
-function clampExerciseIndex(index: number) {
-  return Math.min(Math.max(index, 0), upperAWorkout.exercises.length - 1)
 }
 
 export const useRecoveryFitStore = create<RecoveryFitStore>()(
@@ -160,28 +268,44 @@ export const useRecoveryFitStore = create<RecoveryFitStore>()(
       ...createInitialSessionState(),
 
       finishDiary: () =>
-        set({
+        set((state) => ({
           activeView: "today",
-          sessionStatus: "completed",
-        }),
+          sessionStatus:
+            state.sessionStatus === "active" ? "completed" : state.sessionStatus,
+        })),
 
       nextExercise: () =>
-        set((state) => ({
-          activeExerciseIndex: clampExerciseIndex(state.activeExerciseIndex + 1),
-        })),
+        set((state) => {
+          const workout = getWorkout(state.workoutId)
+
+          return {
+            activeExerciseIndex: clampExerciseIndex(
+              state.activeExerciseIndex + 1,
+              workout
+            ),
+          }
+        }),
 
       previousExercise: () =>
-        set((state) => ({
-          activeExerciseIndex: clampExerciseIndex(state.activeExerciseIndex - 1),
-        })),
+        set((state) => {
+          const workout = getWorkout(state.workoutId)
 
-      resetSession: () => set(createInitialSessionState()),
+          return {
+            activeExerciseIndex: clampExerciseIndex(
+              state.activeExerciseIndex - 1,
+              workout
+            ),
+          }
+        }),
+
+      resetSession: (nextWorkoutId) =>
+        set(createInitialSessionState(nextWorkoutId ?? upperAWorkout.id)),
 
       saveExercise: (exerciseId) => {
         const state = get()
         const targetExerciseId = exerciseId ?? currentExerciseId(state)
 
-        if (!targetExerciseId) {
+        if (!targetExerciseId || state.sessionStatus === "idle") {
           return
         }
 
@@ -198,12 +322,30 @@ export const useRecoveryFitStore = create<RecoveryFitStore>()(
         }))
       },
 
-      setActiveView: (view) => set({ activeView: view }),
+      setActiveView: (view) =>
+        set((state) => ({
+          activeView:
+            view === "session" && state.sessionStatus === "idle" ? "today" : view,
+        })),
 
-      startSession: () =>
-        set({
-          activeView: "session",
-          sessionStatus: "active",
+      setBaseWorkout: (workoutId) =>
+        set((state) =>
+          state.sessionStatus === "idle" ? { workoutId } : {}
+        ),
+
+      startSession: (workoutId) =>
+        set((state) => {
+          const workout = getWorkout(workoutId)
+
+          if (state.sessionStatus === "idle") {
+            return createActiveSessionState(workout)
+          }
+
+          if (state.sessionStatus === "active" && state.workoutId === workoutId) {
+            return { activeView: "session" }
+          }
+
+          return {}
         }),
 
       toggleWarmupItem: (itemId) =>
@@ -230,7 +372,14 @@ export const useRecoveryFitStore = create<RecoveryFitStore>()(
         }
 
         set((state) => {
-          const log = state.exerciseLogs[exerciseId] ?? createExerciseLog(exerciseId)
+          const workout = getWorkout(state.workoutId)
+          const exercise = workout.exercises.find((item) => item.id === exerciseId)
+
+          if (!exercise || state.sessionStatus === "idle") {
+            return {}
+          }
+
+          const log = state.exerciseLogs[exerciseId] ?? createExerciseLog(exercise)
 
           return {
             exerciseLogs: {
@@ -272,7 +421,14 @@ export const useRecoveryFitStore = create<RecoveryFitStore>()(
         }
 
         set((state) => {
-          const log = state.exerciseLogs[exerciseId] ?? createExerciseLog(exerciseId)
+          const workout = getWorkout(state.workoutId)
+          const exercise = workout.exercises.find((item) => item.id === exerciseId)
+
+          if (!exercise || state.sessionStatus === "idle") {
+            return {}
+          }
+
+          const log = state.exerciseLogs[exerciseId] ?? createExerciseLog(exercise)
 
           return {
             exerciseLogs: {

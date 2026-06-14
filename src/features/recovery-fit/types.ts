@@ -15,6 +15,14 @@ export type WeekdayId =
 
 export type ScheduleActivityKind = "workout" | "swim" | "rest"
 
+export type WorkoutId =
+  | "upper-a-v02"
+  | "lower-a-v02"
+  | "upper-b-v02"
+  | "lower-b-v02"
+
+export type WorkoutTrackingUnit = "reps" | "seconds"
+
 export type PainRegionId =
   | "ombro_esquerdo"
   | "ombro_direito"
@@ -76,13 +84,15 @@ export type WorkoutExercise = {
   order: number
   name: string
   plannedSets: number
+  plannedSetsLabel?: string
   repRange: string
+  trackingUnit?: WorkoutTrackingUnit
   targetRir: number
   observation?: string
 }
 
 export type WorkoutPlan = {
-  id: string
+  id: WorkoutId
   name: string
   focus: string
   warmupItems: WarmupItem[]
@@ -90,7 +100,7 @@ export type WorkoutPlan = {
 }
 
 export type PlannedWorkout = {
-  id: string
+  id: WorkoutId
   name: string
   focus: string
   status: "available" | "planned"
@@ -103,13 +113,13 @@ export type WeeklyScheduleItem = {
   activityKind: ScheduleActivityKind
   title: string
   description: string
-  workoutId?: string
+  workoutId?: WorkoutId
 }
 
 export type RecoveryFitSessionState = {
   activeView: AppView
   sessionStatus: SessionStatus
-  workoutId: string
+  workoutId: WorkoutId
   activeExerciseIndex: number
   warmupChecklist: Record<string, boolean>
   exerciseLogs: Record<string, WorkoutExerciseLog>
@@ -148,7 +158,7 @@ export type NormalizedExerciseLog = {
 
 export type MarkdownReportInput = {
   selectedScheduleItem: WeeklyScheduleItem
-  workout: WorkoutPlan
+  sessionWorkout: WorkoutPlan | null
   session: RecoveryFitSessionState
   generatedAt: Date
 }

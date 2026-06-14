@@ -1,13 +1,11 @@
 import { painRegionLabels, recoveryRegionLabels } from "../mock-data"
-import {
-  normalizeExerciseLogDraft,
-  parseNumericDraft,
-} from "../schemas"
+import { normalizeExerciseLogDraft, parseNumericDraft } from "../schemas"
 import type {
   MarkdownReportInput,
   PainRegionId,
   RecoveryFitSessionState,
   WeeklyScheduleItem,
+  WorkoutExercise,
   WorkoutPlan,
 } from "../types"
 import { getRecoveryRecommendation } from "./recovery-rules"
@@ -48,6 +46,19 @@ function formatActivityKind(kind: WeeklyScheduleItem["activityKind"]) {
   } satisfies Record<WeeklyScheduleItem["activityKind"], string>
 
   return labels[kind]
+}
+
+function formatPlannedPrescription(exercise: WorkoutExercise) {
+  return `${exercise.plannedSetsLabel ?? exercise.plannedSets}×${exercise.repRange}`
+}
+
+function getCompletedExerciseCount(
+  workout: WorkoutPlan,
+  session: RecoveryFitSessionState
+) {
+  const exerciseIds = new Set(workout.exercises.map((exercise) => exercise.id))
+
+  return session.completedExerciseIds.filter((id) => exerciseIds.has(id)).length
 }
 
 function getExercisePainValues(session: RecoveryFitSessionState) {
@@ -95,6 +106,7 @@ function formatSetLine({
   rir,
   painDuring,
   painRegion,
+  trackingUnit,
 }: {
   exerciseName: string
   loadKg: number | null
@@ -103,12 +115,16 @@ function formatSetLine({
   reps: number | null
   rir: number | null
   setNumber: number
+  trackingUnit: WorkoutExercise["trackingUnit"]
 }) {
   const region = painRegion ? painRegionLabels[painRegion] : emptyValue
+  const volumeLabel = trackingUnit === "seconds" ? "tempo" : "reps"
+  const volumeValue =
+    trackingUnit === "seconds" && reps !== null ? `${reps}s` : formatNumber(reps)
 
   return `- ${exerciseName} | série ${setNumber}: carga ${formatNumber(
     loadKg
-  )} kg, reps ${formatNumber(reps)}, RIR ${formatNumber(
+  )} kg, ${volumeLabel} ${volumeValue}, RIR ${formatNumber(
     rir
   )}, dor ${formatNumber(painDuring)}, região ${region}`
 }
@@ -122,6 +138,7 @@ function formatExerciseSection(workout: WorkoutPlan, session: RecoveryFitSession
       const setLines = normalized?.sets.map((set) =>
         formatSetLine({
           exerciseName: exercise.name,
+          trackingUnit: exercise.trackingUnit,
           ...set,
         })
       )
@@ -129,7 +146,7 @@ function formatExerciseSection(workout: WorkoutPlan, session: RecoveryFitSession
       return [
         `### ${exercise.order}. ${exercise.name}`,
         `- Status: ${completed ? "concluído" : incompleteValue}`,
-        `- Planejado: ${exercise.plannedSets}×${exercise.repRange}, alvo RIR ${exercise.targetRir}`,
+        `- Planejado: ${formatPlannedPrescription(exercise)}, alvo RIR ${exercise.targetRir}`,
         `- Nota: ${normalized?.note || emptyValue}`,
         ...(setLines?.length ? setLines : ["- Séries: não preenchido"]),
       ].join("\n")
@@ -151,15 +168,22 @@ export function getReportRecommendation(input: Pick<MarkdownReportInput, "sessio
 }
 
 export function generateMarkdownReport(input: MarkdownReportInput) {
-  const { selectedScheduleItem, session, workout } = input
+  const { selectedScheduleItem, session, sessionWorkout } = input
   const exercisePainValues = getExercisePainValues(session)
   const maxExercisePain =
     exercisePainValues.length > 0 ? Math.max(...exercisePainValues) : null
   const reportedRegions = getReportedPainRegions(session)
   const recommendation = getReportRecommendation(input)
+  const completedExerciseCount = sessionWorkout
+    ? getCompletedExerciseCount(sessionWorkout, session)
+    : 0
+  const exerciseCompletionLabel = sessionWorkout
+    ? `${completedExerciseCount}/${sessionWorkout.exercises.length}`
+    : "não iniciado"
+  const registeredWorkoutName = sessionWorkout?.name ?? "não iniciado"
 
   return [
-    `# Relatório RecoveryFit — ${workout.name}`,
+    `# Relatório RecoveryFit — ${sessionWorkout?.name ?? selectedScheduleItem.title}`,
     "",
     `Gerado em: ${formatDateTime(input.generatedAt)}`,
     "",
@@ -170,14 +194,14 @@ export function generateMarkdownReport(input: MarkdownReportInput) {
     `- Descrição: ${selectedScheduleItem.description}`,
     "",
     "## Sessão registrada",
-    `- Treino registrado: ${workout.name}`,
+    `- Treino registrado: ${registeredWorkoutName}`,
     `- Status da sessão: ${formatSessionStatus(session.sessionStatus)}`,
-    `- Exercícios concluídos: ${session.completedExerciseIds.length}/${workout.exercises.length}`,
+    `- Exercícios concluídos: ${exerciseCompletionLabel}`,
     "",
     "## Resumo",
-    `- Treino: ${workout.name}`,
+    `- Treino: ${registeredWorkoutName}`,
     `- Status da sessão: ${formatSessionStatus(session.sessionStatus)}`,
-    `- Exercícios concluídos: ${session.completedExerciseIds.length}/${workout.exercises.length}`,
+    `- Exercícios concluídos: ${exerciseCompletionLabel}`,
     `- Maior dor durante exercício: ${formatNumber(maxExercisePain)}`,
     `- Regiões relatadas durante exercício: ${
       reportedRegions.length > 0
@@ -191,17 +215,21 @@ export function generateMarkdownReport(input: MarkdownReportInput) {
     `- Ultraprocessados: ${formatBoolean(session.dailyCheckin.ateUltraprocessed)}`,
     `- Sintoma gástrico: ${formatBoolean(session.dailyCheckin.gastricSymptoms)}`,
     `- Fome antes do jantar: ${session.dailyCheckin.hungerBeforeDinner}/10`,
-    "",
-    "## Aquecimento",
-    ...workout.warmupItems.map(
-      (item) =>
-        `- ${item.label} (${item.prescription}): ${
-          session.warmupChecklist[item.id] ? "feito" : incompleteValue
-        }`
-    ),
-    "",
-    "## Exercícios e séries",
-    formatExerciseSection(workout, session),
+    ...(sessionWorkout
+      ? [
+          "",
+          "## Aquecimento",
+          ...sessionWorkout.warmupItems.map(
+            (item) =>
+              `- ${item.label} (${item.prescription}): ${
+                session.warmupChecklist[item.id] ? "feito" : incompleteValue
+              }`
+          ),
+          "",
+          "## Exercícios e séries",
+          formatExerciseSection(sessionWorkout, session),
+        ]
+      : []),
     "",
     "## Recuperação pós-treino",
     ...Object.entries(session.recovery.pain).map(

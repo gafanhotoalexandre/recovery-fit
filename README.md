@@ -1,8 +1,8 @@
 # RecoveryFit
 
-POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.2.2 estabiliza QA, segurança, documentação base e higiene técnica antes da v0.3.
+POC mobile-first para registrar treino, dor e recuperação com progressão conservadora. A v0.3 completa os treinos locais da agenda semanal sem backend.
 
-## Estado Atual — v0.2.2
+## Estado Atual — v0.3
 
 Inclui:
 
@@ -10,11 +10,10 @@ Inclui:
 - Store Zustand com persistência seletiva em `localStorage`.
 - Validação com Zod para drafts e dados normalizados.
 - Agenda semanal local tipada, com destaque do dia atual e seleção manual de dia.
-- Treino `Upper A` completo.
-- Lower A, Upper B e Lower B planejados na agenda, ainda sem fluxo completo.
+- Treinos `Upper A`, `Lower A`, `Upper B` e `Lower B` completos no fluxo local.
 - Natação nas terças/quintas e descanso no domingo.
 - Checklist real de aquecimento para ombros, escápulas e hálux.
-- Registro de séries por exercício com carga, reps, RIR, dor e região opcional.
+- Registro de séries por exercício com carga, reps ou segundos, RIR, dor e região opcional.
 - Check-in simples do dia.
 - Recuperação pós-treino por ombro/hálux.
 - Exportação Markdown com dados reais da sessão, mesmo incompleta.
@@ -62,7 +61,7 @@ Pontos principais:
 
 - `store.ts`: estado local da sessão com Zustand `persist`, `version`, `migrate` e `partialize`.
 - `schemas.ts`: validação Zod para drafts e dados normalizados.
-- `mock-data.ts`: agenda semanal, treinos planejados, treino Upper A, aquecimento, labels e ajuda contextual.
+- `mock-data.ts`: agenda semanal, coleção local de treinos, aquecimento, labels e ajuda contextual.
 - `lib/recovery-rules.ts`: regras puras de dor/recomendação.
 - `lib/export-report.ts`: relatório Markdown baseado no estado local atual.
 - `components/`: drawers extraídos da feature quando isso melhora leitura sem criar arquitetura excessiva.
@@ -101,10 +100,10 @@ As regras da POC servem como apoio ao registro e à organização da progressão
 
 ## Roadmap
 
-- v0.3: histórico local, múltiplos treinos Upper/Lower, edição simples de templates e exportação CSV inicial.
+- v0.3: múltiplos treinos locais Upper/Lower completos na agenda semanal.
 - v0.4: React Router em Data Mode, rotas reais e layouts.
 - v0.5: Supabase Auth, schema, RLS, profiles e persistência real.
 - v0.6: convites, sincronização de sessões e histórico semanal.
 - v0.7: regras de progressão mais completas, observação por exercício e alertas de dor 24h.
-- v0.8+: MealGuard leve, dashboard semanal e PWA completo.
+- v0.8+: MealGuard leve, dashboard semanal, PWA completo, templates editáveis e exportação CSV.
 - MVP 1.0: app autenticado, treino real persistido, dor/check-ins, recomendações conservadoras, exportação Markdown/CSV e fluxo mobile confiável.
